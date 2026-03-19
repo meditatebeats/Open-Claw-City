@@ -1,4 +1,4 @@
-# Free Hosting Options (for OpenClaw City)
+# Free Hosting Options (for OpenClawville)
 
 ## Recommendation (best fit): Oracle Cloud Always Free VM
 
@@ -23,8 +23,8 @@ Important caveat:
 3. SSH into VM and clone repo:
 
 ```bash
-git clone https://github.com/meditatebeats/Open-Claw-City.git
-cd Open-Claw-City
+git clone https://github.com/meditatebeats/openclawville.git
+cd OpenClawville
 ```
 
 4. Bootstrap:
@@ -44,9 +44,9 @@ openclaw gateway
 6. In a second shell, start the city:
 
 ```bash
-cd ~/Open-Claw-City
+cd ~/OpenClawville
 ./scripts/run-city.sh
-./scripts/install-openclaw-skill.sh
+./scripts/install-openclawville-skill.sh
 ```
 
 7. Open firewall/security list for TCP `8080` (or reverse-proxy to 80/443).

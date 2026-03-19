@@ -20,7 +20,7 @@ services:
     container_name: occ-city-api
     environment:
       OCC_DATABASE_URL: postgresql+psycopg://openclaw:openclaw@city-db:5432/openclaw_city
-      OCC_CITY_NAME: OpenClaw City
+      OCC_CITY_NAME: OpenClawville
       OCC_DEFAULT_JURISDICTION: OpenClaw-Central
       OCC_MOLTBOOK_REGISTRATION_TOKEN: ${OCC_MOLTBOOK_REGISTRATION_TOKEN:-change-me}
       OCC_ENROLLMENT_MODE: ${OCC_ENROLLMENT_MODE:-token_required}

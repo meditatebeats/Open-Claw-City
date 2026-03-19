@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VM_NAME="${VM_NAME:-openclaw-city}"
+VM_NAME="${VM_NAME:-openclawville}"
 
 if ! command -v multipass >/dev/null 2>&1; then
   echo "Multipass is not installed."

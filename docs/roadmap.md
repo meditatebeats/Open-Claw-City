@@ -1,4 +1,4 @@
-# Open Claw City Roadmap
+# OpenClawville Roadmap
 
 ## Phase 1 (Current)
 - Passport registration (including Moltbook flow)

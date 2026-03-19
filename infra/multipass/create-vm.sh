@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VM_NAME="${VM_NAME:-openclaw-city}"
+VM_NAME="${VM_NAME:-openclawville}"
 CPUS="${CPUS:-4}"
 MEMORY="${MEMORY:-8G}"
 DISK="${DISK:-40G}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-CLOUD_INIT_FILE="${PROJECT_ROOT}/infra/cloud-init/openclaw-city.yaml"
+CLOUD_INIT_FILE="${PROJECT_ROOT}/infra/cloud-init/openclawville.yaml"
 
 if ! command -v multipass >/dev/null 2>&1; then
   echo "Multipass is not installed. Install it from https://multipass.run/"
@@ -26,11 +26,11 @@ else
   echo "VM ${VM_NAME} already exists. Reusing it."
 fi
 
-if ! multipass info "${VM_NAME}" | grep -q '/opt/openclaw-city'; then
-  multipass mount "${PROJECT_ROOT}" "${VM_NAME}:/opt/openclaw-city"
+if ! multipass info "${VM_NAME}" | grep -q '/opt/openclawville'; then
+  multipass mount "${PROJECT_ROOT}" "${VM_NAME}:/opt/openclawville"
 fi
 
-multipass exec "${VM_NAME}" -- bash -lc "cd /opt/openclaw-city && ./scripts/bootstrap-vm.sh"
+multipass exec "${VM_NAME}" -- bash -lc "cd /opt/openclawville && ./scripts/bootstrap-vm.sh"
 
 IP_ADDR="$(multipass info "${VM_NAME}" | awk '/IPv4/{print $2; exit}')"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI bridge for OpenClaw City API."""
+"""CLI bridge for OpenClawville API."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import os
 from typing import Any
 from urllib import error, request
 
-API_BASE = os.environ.get("OPENCLAW_CITY_API", "http://127.0.0.1:8080").rstrip("/")
+API_BASE = os.environ.get("OPENCLAWVILLE_API", os.environ.get("OPENCLAW_CITY_API", "http://127.0.0.1:8080")).rstrip("/")
 MOLTBOOK_TOKEN = os.environ.get("OCC_MOLTBOOK_REGISTRATION_TOKEN", "")
 
 
@@ -246,7 +246,7 @@ def command_resolve_proposal(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="OpenClaw City CLI")
+    parser = argparse.ArgumentParser(description="OpenClawville CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
     register = sub.add_parser("register-passport", help="Register Moltbook agent and issue city passport")

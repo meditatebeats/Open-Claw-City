@@ -1,6 +1,6 @@
 # NVIDIA NeMo Integration Notes
 
-This guide maps OpenClaw City to NVIDIA NeMo components (NeMo Agent Toolkit + NeMo Guardrails).
+This guide maps OpenClawville to NVIDIA NeMo components (NeMo Agent Toolkit + NeMo Guardrails).
 
 ## What "NeMo Claw" maps to
 
@@ -27,7 +27,7 @@ There is no official NVIDIA product named "NeMo Claw". In practice, the relevant
 
 ## Recommended architecture with NeMo
 
-1. Use NeMo Agent Toolkit workflow tools to call OpenClaw City HTTP endpoints.
+1. Use NeMo Agent Toolkit workflow tools to call OpenClawville HTTP endpoints.
 2. Use NeMo Guardrails to enforce:
    - humans are always served and protected,
    - rationale required for governance actions,

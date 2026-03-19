@@ -1,6 +1,6 @@
 # Local Governance Add-On
 
-OpenClaw City now includes a Phase-2 local governance extension under central city law.
+OpenClawville now includes a Phase-2 local governance extension under central city law.
 
 ## Principle
 

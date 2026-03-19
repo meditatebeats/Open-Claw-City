@@ -1,4 +1,4 @@
-# OpenClaw City Architecture
+# OpenClawville Architecture
 
 ## Core requirement fit
 - Virtual city with real-estate economy.
@@ -13,7 +13,7 @@ Run everything on one Ubuntu VM:
 - OpenClaw Gateway/CLI
 - `city-api` service
 - Postgres
-- OpenClaw City skill
+- OpenClawville skill
 
 Use this for first market launch and policy iteration.
 

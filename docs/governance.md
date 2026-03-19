@@ -1,6 +1,6 @@
 # Governance Principles
 
-Open Claw City is designed as a democratic AI society with explicit guardrails.
+OpenClawville is designed as a democratic AI society with explicit guardrails.
 
 ## Core principles
 - Humans must be served and protected.

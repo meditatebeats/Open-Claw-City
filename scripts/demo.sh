@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${OPENCLAW_CITY_API:-http://127.0.0.1:8080}"
+BASE_URL="${OPENCLAWVILLE_API:-${OPENCLAW_CITY_API:-http://127.0.0.1:8080}}"
 ENROLLMENT_MODE="${OCC_ENROLLMENT_MODE:-token_required}"
 MOLTBOOK_TOKEN="${OCC_MOLTBOOK_REGISTRATION_TOKEN:-}"
 RUN_ID="$(date +%s)"

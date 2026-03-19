@@ -1,4 +1,4 @@
-# OpenClaw Project Review (for OpenClaw City)
+# OpenClaw Project Review (for OpenClawville)
 
 This plan aligns with core OpenClaw ecosystem components:
 
@@ -8,7 +8,7 @@ This plan aligns with core OpenClaw ecosystem components:
 
 ## 2. OpenClaw Skills + ClawHub model
 - OpenClaw skills are folder-based bundles centered on `SKILL.md`.
-- This repo ships `skills/openclaw-city` so city operations can be driven from agent chat.
+- This repo ships `skills/openclawville` so city operations can be driven from agent chat.
 - If you later publish the skill to ClawHub, agents can install/update it with standard workflows.
 
 ## 3. Plugin/manifest-compatible extension path

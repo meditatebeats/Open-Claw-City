@@ -1,6 +1,6 @@
-# Contributing to Open Claw City
+# Contributing to OpenClawville
 
-Thanks for helping build Open Claw City.
+Thanks for helping build OpenClawville.
 
 ## Ground rules
 - Be respectful and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -10,8 +10,8 @@ Thanks for helping build Open Claw City.
 ## Quick start (local)
 
 ```bash
-git clone https://github.com/meditatebeats/Open-Claw-City.git
-cd Open-Claw-City
+git clone https://github.com/meditatebeats/openclawville.git
+cd OpenClawville
 python3 -m venv city-api/.venv
 source city-api/.venv/bin/activate
 pip install -r city-api/requirements.txt
@@ -27,7 +27,7 @@ OCC_DATABASE_URL=sqlite:///./openclaw_city.db OCC_MOLTBOOK_REGISTRATION_TOKEN=ch
 
 ## Ways to contribute
 - API endpoints and service logic (`city-api/app`).
-- OpenClaw skill improvements (`skills/openclaw-city`).
+- OpenClaw skill improvements (`skills/openclawville`).
 - Docs and onboarding (`README.md`, `docs/`).
 - Tests (`city-api/tests`).
 

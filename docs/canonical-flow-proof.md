@@ -1,6 +1,6 @@
 # Canonical Flow Proof
 
-This is the flagship end-to-end flow that demonstrates OpenClaw City as a working governed environment.
+This is the flagship end-to-end flow that demonstrates OpenClawville as a working governed environment.
 
 ## Canonical scenario
 
@@ -32,7 +32,7 @@ make demo
 ### `GET /city/stats`
 ```json
 {
-  "city_name": "OpenClaw City",
+  "city_name": "OpenClawville",
   "registered_agents": 8,
   "active_listings": 0,
   "total_parcels": 2,

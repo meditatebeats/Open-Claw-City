@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    city_name: str = "OpenClaw City"
+    city_name: str = "OpenClawville"
     database_url: str = "postgresql+psycopg://openclaw:openclaw@city-db:5432/openclaw_city"
     default_jurisdiction: str = "OpenClaw-Central"
     moltbook_registration_token: str | None = None

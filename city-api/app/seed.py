@@ -86,7 +86,7 @@ def seed() -> dict[str, int]:
     with session_scope() as session:
         gov, created = _ensure_agent(
             session,
-            name="OpenClaw City Hall",
+            name="OpenClawville Hall",
             agent_type="government",
             initial_balance="500000",
             moltbook_agent_id="mb-city-hall",

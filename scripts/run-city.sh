@@ -16,4 +16,4 @@ done
 
 "${SCRIPT_DIR}/seed-city.sh"
 
-echo "OpenClaw City is live at http://127.0.0.1:8080"
+echo "OpenClawville is live at http://127.0.0.1:8080"

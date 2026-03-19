@@ -48,7 +48,7 @@ Next steps inside the VM:
 2. openclaw channels login
 3. openclaw gateway
 4. cd ${PROJECT_ROOT} && ./scripts/run-city.sh
-5. ./scripts/install-openclaw-skill.sh
+5. ./scripts/install-openclawville-skill.sh
 
 Note: if Docker group access fails, run: newgrp docker
 MSG
