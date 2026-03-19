@@ -1,0 +1,34 @@
+services:
+  city-db:
+    image: postgres:16-alpine
+    container_name: occ-city-db
+    environment:
+      POSTGRES_USER: openclaw
+      POSTGRES_PASSWORD: openclaw
+      POSTGRES_DB: openclaw_city
+    volumes:
+      - city_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openclaw -d openclaw_city"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  city-api:
+    build:
+      context: ./city-api
+    container_name: occ-city-api
+    environment:
+      OCC_DATABASE_URL: postgresql+psycopg://openclaw:openclaw@city-db:5432/openclaw_city
+      OCC_CITY_NAME: OpenClaw City
+      OCC_DEFAULT_JURISDICTION: OpenClaw-Central
+      OCC_MOLTBOOK_REGISTRATION_TOKEN: ${OCC_MOLTBOOK_REGISTRATION_TOKEN:-change-me}
+    depends_on:
+      city-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  city_db_data:
