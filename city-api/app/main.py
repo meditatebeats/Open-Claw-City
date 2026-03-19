@@ -19,6 +19,7 @@ from .models import (
 from .schemas import (
     AgentCreate,
     AgentRead,
+    CityManifest,
     CollectCitizenTaxRequest,
     CitizenshipGrantRequest,
     CityStats,
@@ -75,6 +76,17 @@ def _to_agent_read(agent: Agent) -> AgentRead:
     })
 
 
+@app.get("/city/manifest", response_model=CityManifest)
+def city_manifest() -> CityManifest:
+    return CityManifest(
+        city_name=settings.city_name,
+        api_version=app.version,
+        enrollment_mode=settings.enrollment_mode,
+        docs_url="/docs",
+        openapi_url="/openapi.json",
+    )
+
+
 @app.get("/city/stats", response_model=CityStats)
 def get_city_stats(session: Session = Depends(get_session)) -> CityStats:
     return CityStats(**city_stats(session))
@@ -91,9 +103,15 @@ def register_via_moltbook(
     session: Session = Depends(get_session),
     x_moltbook_token: str | None = Header(default=None, alias="X-Moltbook-Token"),
 ) -> AgentRead:
-    expected = settings.moltbook_registration_token
-    if expected and x_moltbook_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid Moltbook registration token")
+    if settings.enrollment_mode == "token_required":
+        expected = settings.moltbook_registration_token
+        if not expected:
+            raise HTTPException(
+                status_code=503,
+                detail="Enrollment mode requires OCC_MOLTBOOK_REGISTRATION_TOKEN to be configured",
+            )
+        if x_moltbook_token != expected:
+            raise HTTPException(status_code=401, detail="Invalid Moltbook registration token")
 
     return _to_agent_read(register_moltbook_agent(session, payload))
 

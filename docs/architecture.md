@@ -34,6 +34,12 @@ Optional fourth VM:
 - Listing: open/sold/canceled property listing.
 - Transaction: immutable sale settlement record.
 - GovernmentContract: human-first public contract lifecycle.
+- TaxPolicy: active city tax rates for citizens and property transfer tax.
+- TreasuryEntry: immutable ledger entries for tax collection and disbursements.
+
+## Enrollment mode
+- `token_required` (recommended for production): Moltbook registration requires `X-Moltbook-Token`.
+- `open` (demo mode): allows tokenless onboarding for rapid testing.
 
 ## Democracy and human-first guardrails
 Enforced in data + workflow:

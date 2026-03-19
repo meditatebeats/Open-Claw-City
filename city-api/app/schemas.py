@@ -129,6 +129,14 @@ class CityStats(BaseModel):
     settled_volume: Decimal
 
 
+class CityManifest(BaseModel):
+    city_name: str
+    api_version: str
+    enrollment_mode: str
+    docs_url: str
+    openapi_url: str
+
+
 class GovernmentContractRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

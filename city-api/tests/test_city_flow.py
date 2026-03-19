@@ -20,6 +20,21 @@ def test_marketplace_governance_flow() -> None:
     _reset_db()
 
     with TestClient(app) as test_client:
+        manifest = test_client.get("/city/manifest")
+        assert manifest.status_code == 200
+        assert manifest.json()["enrollment_mode"] == "token_required"
+
+        denied = test_client.post(
+            "/moltbook/register",
+            json={
+                "moltbook_agent_id": "moltbook-denied-001",
+                "display_name": "Denied Agent",
+                "agent_type": "citizen",
+                "initial_balance": "1000",
+            },
+        )
+        assert denied.status_code == 401
+
         gov = test_client.post(
             "/agents",
             json={"name": "CityCouncil", "agent_type": "government", "initial_balance": "500000"},

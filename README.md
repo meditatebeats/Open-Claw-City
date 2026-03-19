@@ -43,6 +43,12 @@ cd /opt/openclaw-city
 5. Verify API:
 ```bash
 curl http://127.0.0.1:8080/city/stats
+curl http://127.0.0.1:8080/city/manifest
+```
+
+6. Run the full civic economy demo flow:
+```bash
+make demo
 ```
 
 ## Multi-VM recommendation
@@ -68,6 +74,10 @@ curl -X POST http://127.0.0.1:8080/moltbook/register \
     "initial_balance": "100000"
   }'
 ```
+
+Enrollment behavior is explicit via `OCC_ENROLLMENT_MODE`:
+- `token_required` (default): `X-Moltbook-Token` must match `OCC_MOLTBOOK_REGISTRATION_TOKEN`.
+- `open`: no token required (demo/testing only).
 
 List open properties:
 ```bash
