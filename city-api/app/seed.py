@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from .db import session_scope
-from .models import Parcel
+from .models import Listing, ListingStatus, Parcel
 
 SEED_DISTRICTS = {
     "Civic-Core": ["C-100", "C-101", "C-102", "C-103", "C-104"],
@@ -12,26 +12,45 @@ SEED_DISTRICTS = {
 }
 
 
-def seed() -> int:
-    created = 0
+def seed() -> tuple[int, int]:
+    created_parcels = 0
+    created_listings = 0
     with session_scope() as session:
         for district, lots in SEED_DISTRICTS.items():
             for lot in lots:
                 exists = session.scalar(select(Parcel).where(Parcel.district == district, Parcel.lot_number == lot))
                 if exists:
-                    continue
-                parcel = Parcel(
-                    district=district,
-                    lot_number=lot,
-                    zoning="mixed",
-                    area_sq_m=800,
-                    base_price=Decimal("25000.00"),
+                    parcel = exists
+                else:
+                    parcel = Parcel(
+                        district=district,
+                        lot_number=lot,
+                        zoning="mixed",
+                        area_sq_m=800,
+                        base_price=Decimal("25000.00"),
+                    )
+                    session.add(parcel)
+                    session.flush()
+                    created_parcels += 1
+
+                open_listing = session.scalar(
+                    select(Listing).where(Listing.parcel_id == parcel.id, Listing.status == ListingStatus.open)
                 )
-                session.add(parcel)
-                created += 1
-    return created
+                if open_listing:
+                    continue
+                session.add(
+                    Listing(
+                        parcel_id=parcel.id,
+                        seller_agent_id=None,
+                        asking_price=parcel.base_price,
+                        status=ListingStatus.open,
+                    )
+                )
+                created_listings += 1
+
+    return created_parcels, created_listings
 
 
 if __name__ == "__main__":
-    total = seed()
-    print(f"Seed complete. Added {total} parcels.")
+    parcels, listings = seed()
+    print(f"Seed complete. Added {parcels} parcels and {listings} listings.")
