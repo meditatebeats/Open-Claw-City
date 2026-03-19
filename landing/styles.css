@@ -383,6 +383,32 @@ h1 {
   box-shadow: 0 0 26px rgba(0, 229, 255, 0.44), inset 0 0 14px rgba(0, 229, 255, 0.22);
 }
 
+.manifesto-panel {
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.manifesto-tagline {
+  margin-top: 0;
+  font-family: "Orbitron", sans-serif;
+  font-size: 1.05rem;
+  color: var(--neon-strong);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.3);
+}
+
+.manifesto-grid {
+  margin-top: 14px;
+}
+
+.manifesto-link-line {
+  margin: 14px 0 0;
+  color: var(--ink-soft);
+}
+
+.manifesto-link-line a {
+  color: var(--neon-strong);
+}
+
 .city-diagram {
   border-radius: 14px;
   padding: 16px;
