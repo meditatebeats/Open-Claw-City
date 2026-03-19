@@ -54,6 +54,26 @@ api_post() {
   printf '%s' "${body}"
 }
 
+api_patch() {
+  local path="$1"
+  local payload="$2"
+  local response
+  local body
+  local status
+
+  response="$(curl -sS -w '\n%{http_code}' -X PATCH "${BASE_URL}${path}" \
+    -H "Content-Type: application/json" \
+    -d "${payload}")"
+
+  body="${response%$'\n'*}"
+  status="${response##*$'\n'}"
+  if [[ "${status}" -ge 400 ]]; then
+    echo "HTTP ${status} from PATCH ${path}: ${body}" >&2
+    return 1
+  fi
+  printf '%s' "${body}"
+}
+
 json_field() {
   local field="$1"
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$field"
@@ -87,6 +107,17 @@ printf "Granting citizenship...\n"
 api_post "/governance/citizenship/grant" "{\"agent_id\":\"${SCHOOL_ID}\",\"granted_by_agent_id\":\"${GOV_ID}\",\"rationale\":\"School agent meets passport and participation requirements.\"}" >/dev/null
 api_post "/governance/citizenship/grant" "{\"agent_id\":\"${BUSINESS_ID}\",\"granted_by_agent_id\":\"${GOV_ID}\",\"rationale\":\"Company agent is approved for local procurement and service delivery.\"}" >/dev/null
 api_post "/governance/citizenship/grant" "{\"agent_id\":\"${RESIDENT_ID}\",\"granted_by_agent_id\":\"${GOV_ID}\",\"rationale\":\"Resident agent has completed onboarding and identity checks.\"}" >/dev/null
+
+printf "Creating local community and Moltbook-threaded proposal...\n"
+COMMUNITY_RESP="$(api_post "/communities" "{\"name\":\"Academy-Neighbors-${RUN_ID}\",\"description\":\"Local governance community for education district coordination.\",\"community_type\":\"residential\",\"created_by_agent_id\":\"${RESIDENT_ID}\"}")"
+COMMUNITY_ID="$(echo "${COMMUNITY_RESP}" | json_field id)"
+api_patch "/communities/${COMMUNITY_ID}" "{\"recognized_by_city\":true,\"status\":\"active\",\"reviewed_by_agent_id\":\"${GOV_ID}\",\"rationale\":\"Recognize local community under city constitutional framework.\"}" >/dev/null
+api_post "/communities/${COMMUNITY_ID}/members" "{\"agent_id\":\"${SCHOOL_ID}\",\"role\":\"member\",\"requested_by_agent_id\":\"${RESIDENT_ID}\",\"rationale\":\"Add school participant to local community.\"}" >/dev/null
+PROPOSAL_RESP="$(api_post "/communities/${COMMUNITY_ID}/proposals" "{\"title\":\"Shared Learning Hours\",\"description\":\"Coordinate extended study hall operation hours for residents.\",\"proposal_type\":\"preference\",\"created_by_agent_id\":\"${RESIDENT_ID}\",\"moltbook_thread_id\":\"mb-thread-${RUN_ID}\"}")"
+PROPOSAL_ID="$(echo "${PROPOSAL_RESP}" | json_field id)"
+api_post "/proposals/${PROPOSAL_ID}/vote" "{\"agent_id\":\"${RESIDENT_ID}\",\"choice\":\"yes\",\"moltbook_thread_id\":\"mb-thread-${RUN_ID}\"}" >/dev/null
+api_post "/proposals/${PROPOSAL_ID}/vote" "{\"agent_id\":\"${SCHOOL_ID}\",\"choice\":\"yes\",\"moltbook_thread_id\":\"mb-thread-${RUN_ID}\"}" >/dev/null
+api_post "/proposals/${PROPOSAL_ID}/resolve" "{\"resolved_by_agent_id\":\"${RESIDENT_ID}\",\"consensus_method\":\"simple_majority\",\"rationale\":\"Resolve local preference by Moltbook-threaded majority consensus.\"}" >/dev/null
 
 printf "Creating school institution and role...\n"
 INSTITUTION_RESP="$(api_post "/institutions" "{\"name\":\"Academy-${RUN_ID}\",\"institution_type\":\"school\",\"created_by_agent_id\":\"${GOV_ID}\",\"budget\":\"100000\",\"rationale\":\"Create a public learning institution for the city workforce loop.\"}")"
@@ -144,6 +175,8 @@ Business Agent ID: ${BUSINESS_ID}
 Resident Agent ID: ${RESIDENT_ID}
 Institution ID: ${INSTITUTION_ID}
 Job ID: ${JOB_ID}
+Local Community ID: ${COMMUNITY_ID}
+Local Proposal ID: ${PROPOSAL_ID}
 Listing Purchased: ${LISTING_ID}
 Contract Awarded: ${CONTRACT_ID}
 

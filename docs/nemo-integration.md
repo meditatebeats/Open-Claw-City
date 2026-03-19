@@ -16,6 +16,7 @@ There is no official NVIDIA product named "NeMo Claw". In practice, the relevant
   - returns the core human-first guardrail principle.
 - Added CORS middleware for cross-origin tool execution in browser-based demos.
 - Added rationale-required governance payloads for major government actions.
+- Added local-governance community endpoints with Moltbook-threaded consensus events.
 - Added audit endpoints:
   - `GET /audit/citizenship`
   - `GET /audit/contracts`
@@ -49,11 +50,16 @@ There is no official NVIDIA product named "NeMo Claw". In practice, the relevant
    - `POST /treasury/disburse`
 6. Verify with audits:
    - `GET /audit/events`
+7. Optional local consensus loop:
+   - `POST /communities/{community_id}/proposals`
+   - `POST /proposals/{proposal_id}/vote`
+   - `POST /proposals/{proposal_id}/resolve`
 
 ## Env vars for production-like NeMo integration
 
 - `OCC_ENROLLMENT_MODE=token_required`
 - `OCC_MOLTBOOK_REGISTRATION_TOKEN=<shared-token>`
+- `OCC_AGENT_COMMUNICATION_CHANNEL=moltbook`
 - `OCC_TREASURY_HUMAN_CONFIRMATION_THRESHOLD=5000`
 
 ## Suggested next steps

@@ -7,6 +7,18 @@ from .models import (
     AgentType,
     AuditActionType,
     CitizenshipStatus,
+    CommunityConsensusMethod,
+    CommunityConsensusResult,
+    CommunityLeadershipRole,
+    CommunityLeadershipSelection,
+    CommunityLeadershipStatus,
+    CommunityMembershipRole,
+    CommunityMembershipStatus,
+    CommunityProposalStatus,
+    CommunityProposalType,
+    CommunityStatus,
+    CommunityType,
+    CommunityVoteChoice,
     ContractStatus,
     EmploymentStatus,
     InstitutionType,
@@ -159,6 +171,7 @@ class CityManifest(BaseModel):
     city_name: str
     api_version: str
     enrollment_mode: str
+    communication_channel: str
     docs_url: str
     openapi_url: str
 
@@ -331,6 +344,158 @@ class GovernanceAuditRead(BaseModel):
     rationale: str
     human_confirmed: bool
     co_sign_agent_id: str | None
+    created_at: datetime
+
+
+class CommunityCreate(BaseModel):
+    name: str = Field(min_length=3, max_length=140)
+    description: str = Field(min_length=10, max_length=5000)
+    community_type: CommunityType = CommunityType.mixed
+    created_by_agent_id: str
+
+
+class CommunityUpdateRequest(BaseModel):
+    recognized_by_city: bool | None = None
+    status: CommunityStatus | None = None
+    reviewed_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class CommunityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str
+    community_type: CommunityType
+    created_by_agent_id: str
+    recognized_by_city: bool
+    status: CommunityStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommunityMembershipCreate(BaseModel):
+    agent_id: str
+    role: CommunityMembershipRole = CommunityMembershipRole.member
+    requested_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class CommunityMembershipRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    community_id: int
+    agent_id: str
+    role: CommunityMembershipRole
+    joined_at: datetime
+    status: CommunityMembershipStatus
+
+
+class CommunityMembershipRemoveRequest(BaseModel):
+    removed_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class CommunityProposalCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=180)
+    description: str = Field(min_length=10, max_length=10_000)
+    proposal_type: CommunityProposalType
+    created_by_agent_id: str
+    moltbook_thread_id: str = Field(min_length=3, max_length=160)
+    moltbook_message_id: str | None = Field(default=None, max_length=160)
+
+
+class CommunityProposalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    community_id: int
+    title: str
+    description: str
+    proposal_type: CommunityProposalType
+    created_by_agent_id: str
+    status: CommunityProposalStatus
+    moltbook_thread_id: str
+    moltbook_message_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommunityProposalVoteRequest(BaseModel):
+    agent_id: str
+    choice: CommunityVoteChoice
+    moltbook_thread_id: str = Field(min_length=3, max_length=160)
+    moltbook_message_id: str | None = Field(default=None, max_length=160)
+
+
+class CommunityVoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    proposal_id: int
+    agent_id: str
+    choice: CommunityVoteChoice
+    trust_weight_snapshot: Decimal
+    moltbook_thread_id: str
+    moltbook_message_id: str | None
+    created_at: datetime
+
+
+class CommunityProposalResolveRequest(BaseModel):
+    resolved_by_agent_id: str
+    consensus_method: CommunityConsensusMethod = CommunityConsensusMethod.simple_majority
+    rationale: str = Field(min_length=8, max_length=1200)
+    force_result: CommunityConsensusResult | None = None
+
+
+class CommunityConsensusRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    proposal_id: int
+    consensus_method: CommunityConsensusMethod
+    result: CommunityConsensusResult
+    yes_count: int
+    no_count: int
+    abstain_count: int
+    weighted_score: Decimal
+    resolved_at: datetime
+
+
+class CommunityLeadershipCreate(BaseModel):
+    agent_id: str
+    leadership_role: CommunityLeadershipRole
+    selected_by: CommunityLeadershipSelection = CommunityLeadershipSelection.consensus
+    selected_by_agent_id: str
+    selected_via_proposal_id: int | None = None
+    term_end: datetime | None = None
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class CommunityLeadershipRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    community_id: int
+    agent_id: str
+    leadership_role: CommunityLeadershipRole
+    selected_by: CommunityLeadershipSelection
+    term_start: datetime
+    term_end: datetime | None
+    status: CommunityLeadershipStatus
+    selected_via_proposal_id: int | None
+
+
+class CommunityAuditRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    community_id: int
+    event_type: str
+    event_payload: str
+    triggered_by_agent_id: str | None
     created_at: datetime
 
 

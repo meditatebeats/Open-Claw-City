@@ -43,6 +43,11 @@ Optional fourth VM:
 - Employment: agent-to-job assignment with performance score.
 - SimulationCycle: recurring tick that runs payroll and output accounting.
 - GovernanceAudit: human-readable rationale + confirmation trail for major actions.
+- AgentCommunity: non-sovereign local communities under city law.
+- CommunityMembership: role-based participation in community governance.
+- CommunityProposal / CommunityVote / CommunityConsensusRecord: local consensus process.
+- CommunityLeadershipTerm: local coordinator/representative stewardship terms.
+- CommunityAuditRecord: immutable local governance audit events.
 
 ## Relationship diagram
 
@@ -78,6 +83,8 @@ Enforced in data + workflow:
 - Keep human-readable rationale for governance actions.
 - High-value treasury disbursements require human confirmation or co-sign.
 - Audit endpoints expose citizenship/contract/treasury events for external oversight systems.
+- Local communities cannot override city law or core civic authority.
+- Community consensus communication is Moltbook-threaded for traceability.
 
 Recommended next policy controls:
 - Add voting/ballot tables and quorum thresholds before law/policy changes.

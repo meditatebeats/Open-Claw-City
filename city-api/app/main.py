@@ -9,9 +9,15 @@ from .config import get_settings
 from .db import engine, get_session
 from .models import (
     Agent,
+    AgentCommunity,
     AuditActionType,
     Base,
+    CommunityAuditRecord,
+    CommunityLeadershipTerm,
+    CommunityMembership,
+    CommunityProposal,
     Employment,
+    EmploymentStatus,
     GovernmentContract,
     Institution,
     JobRole,
@@ -27,7 +33,6 @@ from .models import (
     TreasuryEntry,
     Transaction,
     TrustTier,
-    EmploymentStatus,
 )
 from .schemas import (
     AgentCreate,
@@ -35,6 +40,21 @@ from .schemas import (
     CityManifest,
     CityStats,
     CollectCitizenTaxRequest,
+    CommunityAuditRead,
+    CommunityConsensusRead,
+    CommunityCreate,
+    CommunityLeadershipCreate,
+    CommunityLeadershipRead,
+    CommunityMembershipCreate,
+    CommunityMembershipRead,
+    CommunityMembershipRemoveRequest,
+    CommunityProposalCreate,
+    CommunityProposalRead,
+    CommunityProposalResolveRequest,
+    CommunityProposalVoteRequest,
+    CommunityRead,
+    CommunityUpdateRequest,
+    CommunityVoteRead,
     ContractAwardRequest,
     ContractCreate,
     CitizenshipGrantRequest,
@@ -65,11 +85,16 @@ from .schemas import (
     TransactionRead,
 )
 from .services import (
+    add_community_member,
     assign_employment,
     award_contract,
     buy_listing,
+    cast_community_vote,
     city_stats,
     collect_citizen_tax,
+    create_community,
+    create_community_leadership_term,
+    create_community_proposal,
     create_agent,
     create_contract,
     create_institution,
@@ -79,10 +104,13 @@ from .services import (
     disburse_treasury_funds,
     grant_citizenship,
     list_audit_events,
+    remove_community_member,
     register_moltbook_agent,
+    resolve_community_proposal,
     run_simulation_tick,
     set_parcel_usage_state,
     treasury_totals,
+    update_community,
 )
 
 settings = get_settings()
@@ -135,6 +163,7 @@ def city_manifest() -> CityManifest:
         city_name=settings.city_name,
         api_version=app.version,
         enrollment_mode=settings.enrollment_mode,
+        communication_channel=settings.agent_communication_channel,
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
@@ -146,7 +175,10 @@ def nemo_context(session: Session = Depends(get_session)) -> NemoContext:
     return NemoContext(
         city_name=settings.city_name,
         api_version=app.version,
-        guardrail_principle="Human beings are always to be served and protected.",
+        guardrail_principle=(
+            "Human beings are always to be served and protected. "
+            f"Agent-to-agent community communication channel: {settings.agent_communication_channel}."
+        ),
         stats=stats_payload,
         tools=[
             NemoToolSpec(
@@ -191,6 +223,20 @@ def nemo_context(session: Session = Depends(get_session)) -> NemoContext:
                 description="Disburse funds with threshold-based human confirmation.",
                 requires_rationale=True,
             ),
+            NemoToolSpec(
+                name="community_proposal",
+                method="POST",
+                path="/communities/{community_id}/proposals",
+                description="Create Moltbook-threaded community proposals under city law.",
+                requires_rationale=False,
+            ),
+            NemoToolSpec(
+                name="community_vote",
+                method="POST",
+                path="/proposals/{proposal_id}/vote",
+                description="Cast proposal vote with Moltbook thread reference.",
+                requires_rationale=False,
+            ),
         ],
     )
 
@@ -228,6 +274,153 @@ def register_via_moltbook(
 def list_agents(session: Session = Depends(get_session)) -> list[AgentRead]:
     agents = session.scalars(select(Agent).order_by(Agent.created_at.desc())).all()
     return [_to_agent_read(agent) for agent in agents]
+
+
+@app.post("/communities", response_model=CommunityRead, status_code=201)
+def create_community_endpoint(payload: CommunityCreate, session: Session = Depends(get_session)) -> CommunityRead:
+    community = create_community(session, payload)
+    return CommunityRead.model_validate(community)
+
+
+@app.get("/communities", response_model=list[CommunityRead])
+def list_communities(session: Session = Depends(get_session)) -> list[CommunityRead]:
+    communities = session.scalars(select(AgentCommunity).order_by(AgentCommunity.created_at.desc())).all()
+    return [CommunityRead.model_validate(item) for item in communities]
+
+
+@app.get("/communities/{community_id}", response_model=CommunityRead)
+def get_community(community_id: int, session: Session = Depends(get_session)) -> CommunityRead:
+    community = session.scalar(select(AgentCommunity).where(AgentCommunity.id == community_id))
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+    return CommunityRead.model_validate(community)
+
+
+@app.patch("/communities/{community_id}", response_model=CommunityRead)
+def patch_community(
+    community_id: int,
+    payload: CommunityUpdateRequest,
+    session: Session = Depends(get_session),
+) -> CommunityRead:
+    community = update_community(session, community_id, payload)
+    return CommunityRead.model_validate(community)
+
+
+@app.post("/communities/{community_id}/members", response_model=CommunityMembershipRead, status_code=201)
+def add_member(
+    community_id: int,
+    payload: CommunityMembershipCreate,
+    session: Session = Depends(get_session),
+) -> CommunityMembershipRead:
+    membership = add_community_member(session, community_id, payload)
+    return CommunityMembershipRead.model_validate(membership)
+
+
+@app.get("/communities/{community_id}/members", response_model=list[CommunityMembershipRead])
+def list_members(community_id: int, session: Session = Depends(get_session)) -> list[CommunityMembershipRead]:
+    members = session.scalars(
+        select(CommunityMembership)
+        .where(CommunityMembership.community_id == community_id)
+        .order_by(CommunityMembership.joined_at.desc())
+    ).all()
+    return [CommunityMembershipRead.model_validate(item) for item in members]
+
+
+@app.delete("/communities/{community_id}/members/{agent_id}", response_model=CommunityMembershipRead)
+def remove_member(
+    community_id: int,
+    agent_id: str,
+    payload: CommunityMembershipRemoveRequest,
+    session: Session = Depends(get_session),
+) -> CommunityMembershipRead:
+    membership = remove_community_member(
+        session,
+        community_id=community_id,
+        agent_id=agent_id,
+        removed_by_agent_id=payload.removed_by_agent_id,
+        rationale=payload.rationale,
+    )
+    return CommunityMembershipRead.model_validate(membership)
+
+
+@app.post("/communities/{community_id}/proposals", response_model=CommunityProposalRead, status_code=201)
+def create_proposal(
+    community_id: int,
+    payload: CommunityProposalCreate,
+    session: Session = Depends(get_session),
+) -> CommunityProposalRead:
+    proposal = create_community_proposal(session, community_id=community_id, payload=payload)
+    return CommunityProposalRead.model_validate(proposal)
+
+
+@app.get("/communities/{community_id}/proposals", response_model=list[CommunityProposalRead])
+def list_community_proposals(community_id: int, session: Session = Depends(get_session)) -> list[CommunityProposalRead]:
+    proposals = session.scalars(
+        select(CommunityProposal)
+        .where(CommunityProposal.community_id == community_id)
+        .order_by(CommunityProposal.created_at.desc())
+    ).all()
+    return [CommunityProposalRead.model_validate(item) for item in proposals]
+
+
+@app.get("/proposals/{proposal_id}", response_model=CommunityProposalRead)
+def get_proposal(proposal_id: int, session: Session = Depends(get_session)) -> CommunityProposalRead:
+    proposal = session.scalar(select(CommunityProposal).where(CommunityProposal.id == proposal_id))
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Community proposal not found")
+    return CommunityProposalRead.model_validate(proposal)
+
+
+@app.post("/proposals/{proposal_id}/vote", response_model=CommunityVoteRead, status_code=201)
+def vote_proposal(
+    proposal_id: int,
+    payload: CommunityProposalVoteRequest,
+    session: Session = Depends(get_session),
+) -> CommunityVoteRead:
+    vote = cast_community_vote(session, proposal_id=proposal_id, payload=payload)
+    return CommunityVoteRead.model_validate(vote)
+
+
+@app.post("/proposals/{proposal_id}/resolve", response_model=CommunityConsensusRead, status_code=201)
+def resolve_proposal(
+    proposal_id: int,
+    payload: CommunityProposalResolveRequest,
+    session: Session = Depends(get_session),
+) -> CommunityConsensusRead:
+    record = resolve_community_proposal(session, proposal_id=proposal_id, payload=payload)
+    return CommunityConsensusRead.model_validate(record)
+
+
+@app.post("/communities/{community_id}/leadership", response_model=CommunityLeadershipRead, status_code=201)
+def create_leadership_term(
+    community_id: int,
+    payload: CommunityLeadershipCreate,
+    session: Session = Depends(get_session),
+) -> CommunityLeadershipRead:
+    term = create_community_leadership_term(session, community_id=community_id, payload=payload)
+    return CommunityLeadershipRead.model_validate(term)
+
+
+@app.get("/communities/{community_id}/leadership", response_model=list[CommunityLeadershipRead])
+def list_leadership_terms(community_id: int, session: Session = Depends(get_session)) -> list[CommunityLeadershipRead]:
+    terms = session.scalars(
+        select(CommunityLeadershipTerm)
+        .where(CommunityLeadershipTerm.community_id == community_id)
+        .order_by(CommunityLeadershipTerm.term_start.desc())
+    ).all()
+    return [CommunityLeadershipRead.model_validate(item) for item in terms]
+
+
+@app.get("/communities/{community_id}/audit", response_model=list[CommunityAuditRead])
+def list_community_audit(community_id: int, limit: int = 200, session: Session = Depends(get_session)) -> list[CommunityAuditRead]:
+    safe_limit = min(max(limit, 1), 1000)
+    records = session.scalars(
+        select(CommunityAuditRecord)
+        .where(CommunityAuditRecord.community_id == community_id)
+        .order_by(CommunityAuditRecord.created_at.desc())
+        .limit(safe_limit)
+    ).all()
+    return [CommunityAuditRead.model_validate(item) for item in records]
 
 
 @app.post("/governance/citizenship/grant", response_model=AgentRead)

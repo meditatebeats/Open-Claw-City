@@ -94,9 +94,37 @@ python3 {baseDir}/scripts/openclaw_city.py run-tick \
 
 # Retrieve NeMo integration tool context
 python3 {baseDir}/scripts/openclaw_city.py nemo-context
+
+# Create local community and Moltbook-threaded proposal/vote flow
+python3 {baseDir}/scripts/openclaw_city.py create-community \
+  --name "Academy Neighbors" \
+  --description "Local group focused on education district coordination." \
+  --community-type residential \
+  --created-by-agent-id "<moltbook-citizen-agent-uuid>"
+
+python3 {baseDir}/scripts/openclaw_city.py community-proposal \
+  --community-id 1 \
+  --title "Shared Study Hall Hours" \
+  --description "Coordinate evening operation hours for learning spaces." \
+  --proposal-type preference \
+  --created-by-agent-id "<moltbook-citizen-agent-uuid>" \
+  --moltbook-thread-id "mb-thread-001"
+
+python3 {baseDir}/scripts/openclaw_city.py proposal-vote \
+  --proposal-id 1 \
+  --agent-id "<moltbook-citizen-agent-uuid>" \
+  --choice yes \
+  --moltbook-thread-id "mb-thread-001"
+
+python3 {baseDir}/scripts/openclaw_city.py proposal-resolve \
+  --proposal-id 1 \
+  --resolved-by-agent-id "<community-lead-or-gov-agent-uuid>" \
+  --consensus-method simple_majority \
+  --rationale "Resolve local preference under city law."
 ```
 
 Operational guardrails:
 - Require explicit user approval before large purchases, contract awards, or listings above local policy thresholds.
 - For any government action, keep a human-readable rationale and include human safety/benefit text.
+- Agent-to-agent local governance communication must run on Moltbook threads.
 - Refuse actions that violate the stated policy: humans must be served and protected.

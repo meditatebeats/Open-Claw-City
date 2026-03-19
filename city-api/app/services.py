@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+import json
 import secrets
 
 from fastapi import HTTPException
@@ -11,10 +12,28 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import (
     Agent,
+    AgentCommunity,
     AgentTrust,
     AgentType,
     AuditActionType,
     CitizenshipStatus,
+    CommunityAuditRecord,
+    CommunityConsensusMethod,
+    CommunityConsensusRecord,
+    CommunityConsensusResult,
+    CommunityLeadershipRole,
+    CommunityLeadershipSelection,
+    CommunityLeadershipStatus,
+    CommunityLeadershipTerm,
+    CommunityMembership,
+    CommunityMembershipRole,
+    CommunityMembershipStatus,
+    CommunityProposal,
+    CommunityProposalType,
+    CommunityProposalStatus,
+    CommunityStatus,
+    CommunityVote,
+    CommunityVoteChoice,
     ContractStatus,
     Employment,
     EmploymentStatus,
@@ -41,6 +60,13 @@ from .models import (
 from .schemas import (
     AgentCreate,
     CollectCitizenTaxRequest,
+    CommunityCreate,
+    CommunityLeadershipCreate,
+    CommunityMembershipCreate,
+    CommunityProposalCreate,
+    CommunityProposalResolveRequest,
+    CommunityProposalVoteRequest,
+    CommunityUpdateRequest,
     ContractAwardRequest,
     ContractCreate,
     EmploymentAssignRequest,
@@ -62,6 +88,16 @@ TRUST_ORDER = {
     TrustTier.resident: 0,
     TrustTier.citizen: 1,
     TrustTier.trusted_contributor: 2,
+}
+COMMUNITY_MANAGER_ROLES = {
+    CommunityMembershipRole.founder,
+    CommunityMembershipRole.coordinator,
+    CommunityMembershipRole.representative,
+}
+TRUST_WEIGHT = {
+    TrustTier.resident: Decimal("1.00"),
+    TrustTier.citizen: Decimal("1.25"),
+    TrustTier.trusted_contributor: Decimal("1.50"),
 }
 
 
@@ -401,6 +437,79 @@ def _require_government_citizen(session: Session, agent_id: str) -> Agent:
         raise HTTPException(status_code=403, detail="Government agent must hold city citizenship")
     _ensure_trust_profile(session, agent)
     return agent
+
+
+def _require_citizen_agent(session: Session, agent_id: str) -> Agent:
+    agent = session.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.citizenship_status != CitizenshipStatus.citizen:
+        raise HTTPException(status_code=403, detail="Agent must hold city citizenship")
+    _ensure_trust_profile(session, agent)
+    return agent
+
+
+def _require_moltbook_agent(session: Session, agent_id: str) -> Agent:
+    agent = _require_citizen_agent(session, agent_id)
+    if not agent.moltbook_agent_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Agent must be Moltbook-registered for agent-to-agent community communication",
+        )
+    return agent
+
+
+def _get_community(session: Session, community_id: int) -> AgentCommunity:
+    community = session.scalar(select(AgentCommunity).where(AgentCommunity.id == community_id))
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+    return community
+
+
+def _get_active_membership(session: Session, community_id: int, agent_id: str) -> CommunityMembership | None:
+    return session.scalar(
+        select(CommunityMembership).where(
+            CommunityMembership.community_id == community_id,
+            CommunityMembership.agent_id == agent_id,
+            CommunityMembership.status == CommunityMembershipStatus.active,
+        )
+    )
+
+
+def _require_community_member(session: Session, community_id: int, agent_id: str) -> CommunityMembership:
+    membership = _get_active_membership(session, community_id, agent_id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Agent is not an active member of this community")
+    return membership
+
+
+def _can_manage_community(session: Session, community_id: int, agent_id: str) -> bool:
+    agent = session.scalar(select(Agent).where(Agent.id == agent_id))
+    if agent and agent.agent_type == AgentType.government and agent.citizenship_status == CitizenshipStatus.citizen:
+        return True
+    membership = _get_active_membership(session, community_id, agent_id)
+    if not membership:
+        return False
+    return membership.role in COMMUNITY_MANAGER_ROLES
+
+
+def _record_community_audit(
+    session: Session,
+    *,
+    community_id: int,
+    event_type: str,
+    event_payload: str,
+    triggered_by_agent_id: str | None,
+) -> CommunityAuditRecord:
+    record = CommunityAuditRecord(
+        community_id=community_id,
+        event_type=event_type,
+        event_payload=event_payload,
+        triggered_by_agent_id=triggered_by_agent_id,
+    )
+    session.add(record)
+    session.flush()
+    return record
 
 
 def grant_citizenship(session: Session, agent_id: str, granted_by_agent_id: str, rationale: str) -> Agent:
@@ -905,3 +1014,392 @@ def list_audit_events(
         query = query.where(GovernanceAudit.action_type.in_(list(action_types)))
     query = query.order_by(GovernanceAudit.created_at.desc()).limit(safe_limit)
     return session.scalars(query).all()
+
+
+def create_community(session: Session, payload: CommunityCreate) -> AgentCommunity:
+    creator = _require_moltbook_agent(session, payload.created_by_agent_id)
+    if session.scalar(select(AgentCommunity).where(AgentCommunity.name == payload.name)):
+        raise HTTPException(status_code=409, detail="Community name already exists")
+
+    community = AgentCommunity(
+        name=payload.name,
+        description=payload.description,
+        community_type=payload.community_type,
+        created_by_agent_id=creator.id,
+        recognized_by_city=False,
+        status=CommunityStatus.forming,
+        updated_at=_now_utc(),
+    )
+    session.add(community)
+    session.flush()
+
+    membership = CommunityMembership(
+        community_id=community.id,
+        agent_id=creator.id,
+        role=CommunityMembershipRole.founder,
+        status=CommunityMembershipStatus.active,
+    )
+    session.add(membership)
+    session.flush()
+
+    _record_community_audit(
+        session,
+        community_id=community.id,
+        event_type="community_created",
+        event_payload=json.dumps({"name": community.name, "community_type": community.community_type.value}),
+        triggered_by_agent_id=creator.id,
+    )
+    session.refresh(community)
+    return community
+
+
+def update_community(session: Session, community_id: int, payload: CommunityUpdateRequest) -> AgentCommunity:
+    reviewer = _require_government_citizen(session, payload.reviewed_by_agent_id)
+    community = _get_community(session, community_id)
+
+    if payload.recognized_by_city is not None:
+        community.recognized_by_city = payload.recognized_by_city
+    if payload.status is not None:
+        community.status = payload.status
+    community.updated_at = _now_utc()
+    session.flush()
+
+    _record_community_audit(
+        session,
+        community_id=community.id,
+        event_type="community_updated_by_city",
+        event_payload=json.dumps(
+            {
+                "recognized_by_city": community.recognized_by_city,
+                "status": community.status.value,
+                "rationale": payload.rationale,
+            }
+        ),
+        triggered_by_agent_id=reviewer.id,
+    )
+    session.refresh(community)
+    return community
+
+
+def add_community_member(session: Session, community_id: int, payload: CommunityMembershipCreate) -> CommunityMembership:
+    _get_community(session, community_id)
+    requester_id = payload.requested_by_agent_id
+    if not _can_manage_community(session, community_id, requester_id):
+        raise HTTPException(status_code=403, detail="Only city government or community leadership may add members")
+
+    agent = _require_citizen_agent(session, payload.agent_id)
+    existing = session.scalar(
+        select(CommunityMembership).where(
+            CommunityMembership.community_id == community_id,
+            CommunityMembership.agent_id == agent.id,
+        )
+    )
+    if existing and existing.status == CommunityMembershipStatus.active:
+        raise HTTPException(status_code=409, detail="Agent is already an active community member")
+
+    if existing:
+        existing.status = CommunityMembershipStatus.active
+        existing.role = payload.role
+        existing.joined_at = _now_utc()
+        membership = existing
+    else:
+        membership = CommunityMembership(
+            community_id=community_id,
+            agent_id=agent.id,
+            role=payload.role,
+            status=CommunityMembershipStatus.active,
+        )
+        session.add(membership)
+
+    session.flush()
+    _record_community_audit(
+        session,
+        community_id=community_id,
+        event_type="member_added",
+        event_payload=json.dumps(
+            {
+                "agent_id": agent.id,
+                "role": payload.role.value,
+                "rationale": payload.rationale,
+            }
+        ),
+        triggered_by_agent_id=requester_id,
+    )
+    session.refresh(membership)
+    return membership
+
+
+def remove_community_member(
+    session: Session,
+    *,
+    community_id: int,
+    agent_id: str,
+    removed_by_agent_id: str,
+    rationale: str,
+) -> CommunityMembership:
+    _get_community(session, community_id)
+    if not _can_manage_community(session, community_id, removed_by_agent_id):
+        raise HTTPException(status_code=403, detail="Only city government or community leadership may remove members")
+
+    membership = session.scalar(
+        select(CommunityMembership).where(
+            CommunityMembership.community_id == community_id,
+            CommunityMembership.agent_id == agent_id,
+            CommunityMembership.status == CommunityMembershipStatus.active,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=404, detail="Active community membership not found for agent")
+
+    membership.status = CommunityMembershipStatus.left
+    session.flush()
+    _record_community_audit(
+        session,
+        community_id=community_id,
+        event_type="member_removed",
+        event_payload=json.dumps({"agent_id": agent_id, "rationale": rationale}),
+        triggered_by_agent_id=removed_by_agent_id,
+    )
+    session.refresh(membership)
+    return membership
+
+
+def create_community_proposal(
+    session: Session,
+    *,
+    community_id: int,
+    payload: CommunityProposalCreate,
+) -> CommunityProposal:
+    community = _get_community(session, community_id)
+    if community.status not in {CommunityStatus.forming, CommunityStatus.active}:
+        raise HTTPException(status_code=400, detail="Community is not in a state that allows proposals")
+
+    _require_community_member(session, community_id, payload.created_by_agent_id)
+    _require_moltbook_agent(session, payload.created_by_agent_id)
+
+    proposal = CommunityProposal(
+        community_id=community_id,
+        title=payload.title,
+        description=payload.description,
+        proposal_type=payload.proposal_type,
+        created_by_agent_id=payload.created_by_agent_id,
+        status=CommunityProposalStatus.open,
+        moltbook_thread_id=payload.moltbook_thread_id,
+        moltbook_message_id=payload.moltbook_message_id,
+        updated_at=_now_utc(),
+    )
+    session.add(proposal)
+    session.flush()
+
+    _record_community_audit(
+        session,
+        community_id=community_id,
+        event_type="proposal_created",
+        event_payload=json.dumps(
+            {
+                "proposal_id": proposal.id,
+                "proposal_type": proposal.proposal_type.value,
+                "moltbook_thread_id": proposal.moltbook_thread_id,
+            }
+        ),
+        triggered_by_agent_id=payload.created_by_agent_id,
+    )
+    session.refresh(proposal)
+    return proposal
+
+
+def cast_community_vote(
+    session: Session,
+    *,
+    proposal_id: int,
+    payload: CommunityProposalVoteRequest,
+) -> CommunityVote:
+    proposal = session.scalar(select(CommunityProposal).where(CommunityProposal.id == proposal_id).with_for_update())
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Community proposal not found")
+    if proposal.status not in {CommunityProposalStatus.open, CommunityProposalStatus.under_review}:
+        raise HTTPException(status_code=409, detail="Proposal is not open for voting")
+    if payload.moltbook_thread_id != proposal.moltbook_thread_id:
+        raise HTTPException(status_code=400, detail="Vote must reference the proposal Moltbook thread")
+
+    _require_community_member(session, proposal.community_id, payload.agent_id)
+    agent = _require_moltbook_agent(session, payload.agent_id)
+    if session.scalar(
+        select(CommunityVote).where(CommunityVote.proposal_id == proposal_id, CommunityVote.agent_id == payload.agent_id)
+    ):
+        raise HTTPException(status_code=409, detail="Agent has already voted on this proposal")
+
+    profile = _ensure_trust_profile(session, agent)
+    weight = TRUST_WEIGHT.get(profile.trust_tier, Decimal("1.00"))
+    vote = CommunityVote(
+        proposal_id=proposal_id,
+        agent_id=payload.agent_id,
+        choice=payload.choice,
+        trust_weight_snapshot=weight,
+        moltbook_thread_id=payload.moltbook_thread_id,
+        moltbook_message_id=payload.moltbook_message_id,
+    )
+    session.add(vote)
+    proposal.status = CommunityProposalStatus.under_review
+    proposal.updated_at = _now_utc()
+    session.flush()
+
+    _record_community_audit(
+        session,
+        community_id=proposal.community_id,
+        event_type="proposal_vote_cast",
+        event_payload=json.dumps(
+            {
+                "proposal_id": proposal.id,
+                "agent_id": payload.agent_id,
+                "choice": payload.choice.value,
+                "moltbook_thread_id": payload.moltbook_thread_id,
+            }
+        ),
+        triggered_by_agent_id=payload.agent_id,
+    )
+    session.refresh(vote)
+    return vote
+
+
+def resolve_community_proposal(
+    session: Session,
+    *,
+    proposal_id: int,
+    payload: CommunityProposalResolveRequest,
+) -> CommunityConsensusRecord:
+    proposal = session.scalar(select(CommunityProposal).where(CommunityProposal.id == proposal_id).with_for_update())
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Community proposal not found")
+    if not _can_manage_community(session, proposal.community_id, payload.resolved_by_agent_id):
+        raise HTTPException(status_code=403, detail="Only city government or community leadership may resolve proposals")
+
+    votes = session.scalars(select(CommunityVote).where(CommunityVote.proposal_id == proposal_id)).all()
+    yes_count = sum(1 for vote in votes if vote.choice == CommunityVoteChoice.yes)
+    no_count = sum(1 for vote in votes if vote.choice == CommunityVoteChoice.no)
+    abstain_count = sum(1 for vote in votes if vote.choice == CommunityVoteChoice.abstain)
+    weighted_yes = sum(
+        Decimal(vote.trust_weight_snapshot) for vote in votes if vote.choice == CommunityVoteChoice.yes
+    )
+    weighted_no = sum(
+        Decimal(vote.trust_weight_snapshot) for vote in votes if vote.choice == CommunityVoteChoice.no
+    )
+    weighted_score = _round_score(weighted_yes - weighted_no)
+
+    result = CommunityConsensusResult.inconclusive
+    if payload.force_result:
+        result = payload.force_result
+    elif payload.consensus_method == CommunityConsensusMethod.simple_majority:
+        if yes_count > no_count:
+            result = CommunityConsensusResult.approved
+        elif no_count > yes_count:
+            result = CommunityConsensusResult.rejected
+    elif payload.consensus_method == CommunityConsensusMethod.supermajority:
+        total_votes = yes_count + no_count
+        if total_votes > 0:
+            yes_ratio = Decimal(yes_count) / Decimal(total_votes)
+            no_ratio = Decimal(no_count) / Decimal(total_votes)
+            if yes_ratio >= Decimal("0.67"):
+                result = CommunityConsensusResult.approved
+            elif no_ratio >= Decimal("0.67"):
+                result = CommunityConsensusResult.rejected
+    elif payload.consensus_method == CommunityConsensusMethod.weighted_trust:
+        if weighted_yes > weighted_no:
+            result = CommunityConsensusResult.approved
+        elif weighted_no > weighted_yes:
+            result = CommunityConsensusResult.rejected
+    elif payload.consensus_method in {CommunityConsensusMethod.coordinator_decision, CommunityConsensusMethod.city_moderated}:
+        if yes_count >= no_count:
+            result = CommunityConsensusResult.approved if (yes_count + no_count + abstain_count) > 0 else CommunityConsensusResult.inconclusive
+        else:
+            result = CommunityConsensusResult.rejected
+
+    consensus = CommunityConsensusRecord(
+        proposal_id=proposal_id,
+        consensus_method=payload.consensus_method,
+        result=result,
+        yes_count=yes_count,
+        no_count=no_count,
+        abstain_count=abstain_count,
+        weighted_score=weighted_score,
+        resolved_at=_now_utc(),
+    )
+    session.add(consensus)
+
+    if result == CommunityConsensusResult.approved:
+        if proposal.proposal_type == CommunityProposalType.petition_to_city:
+            proposal.status = CommunityProposalStatus.submitted_to_city
+        else:
+            proposal.status = CommunityProposalStatus.approved_by_community
+    elif result == CommunityConsensusResult.rejected:
+        proposal.status = CommunityProposalStatus.rejected_by_community
+    else:
+        proposal.status = CommunityProposalStatus.under_review
+    proposal.updated_at = _now_utc()
+    session.flush()
+
+    _record_community_audit(
+        session,
+        community_id=proposal.community_id,
+        event_type="proposal_resolved",
+        event_payload=json.dumps(
+            {
+                "proposal_id": proposal.id,
+                "result": result.value,
+                "consensus_method": payload.consensus_method.value,
+                "rationale": payload.rationale,
+            }
+        ),
+        triggered_by_agent_id=payload.resolved_by_agent_id,
+    )
+    session.refresh(consensus)
+    return consensus
+
+
+def create_community_leadership_term(
+    session: Session,
+    *,
+    community_id: int,
+    payload: CommunityLeadershipCreate,
+) -> CommunityLeadershipTerm:
+    _get_community(session, community_id)
+    if not _can_manage_community(session, community_id, payload.selected_by_agent_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Only city government or community leadership may assign local leadership terms",
+        )
+
+    membership = _require_community_member(session, community_id, payload.agent_id)
+    if payload.leadership_role == CommunityLeadershipRole.coordinator:
+        membership.role = CommunityMembershipRole.coordinator
+    elif payload.leadership_role == CommunityLeadershipRole.community_rep:
+        membership.role = CommunityMembershipRole.representative
+
+    leadership = CommunityLeadershipTerm(
+        community_id=community_id,
+        agent_id=payload.agent_id,
+        leadership_role=payload.leadership_role,
+        selected_by=payload.selected_by,
+        term_start=_now_utc(),
+        term_end=payload.term_end,
+        status=CommunityLeadershipStatus.active,
+        selected_via_proposal_id=payload.selected_via_proposal_id,
+    )
+    session.add(leadership)
+    session.flush()
+    _record_community_audit(
+        session,
+        community_id=community_id,
+        event_type="leadership_assigned",
+        event_payload=json.dumps(
+            {
+                "agent_id": payload.agent_id,
+                "leadership_role": payload.leadership_role.value,
+                "selected_by": payload.selected_by.value,
+                "rationale": payload.rationale,
+            }
+        ),
+        triggered_by_agent_id=payload.selected_by_agent_id,
+    )
+    session.refresh(leadership)
+    return leadership

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     default_jurisdiction: str = "OpenClaw-Central"
     moltbook_registration_token: str | None = None
     enrollment_mode: Literal["open", "token_required"] = "token_required"
+    agent_communication_channel: Literal["moltbook"] = "moltbook"
     treasury_human_confirmation_threshold: Decimal = Decimal("5000.00")
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="OCC_", extra="ignore")

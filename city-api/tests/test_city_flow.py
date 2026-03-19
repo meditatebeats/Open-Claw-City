@@ -25,6 +25,7 @@ def test_marketplace_governance_flow() -> None:
         manifest = test_client.get("/city/manifest")
         assert manifest.status_code == 200
         assert manifest.json()["enrollment_mode"] == "token_required"
+        assert manifest.json()["communication_channel"] == "moltbook"
         nemo = test_client.get("/integrations/nemo/context")
         assert nemo.status_code == 200
         assert any(tool["name"] == "run_simulation_tick" for tool in nemo.json()["tools"])
@@ -328,3 +329,134 @@ def test_institution_employment_simulation_loop() -> None:
         actions = {entry["action_type"] for entry in events.json()}
         assert "employment_assigned" in actions
         assert "simulation_tick" in actions
+
+
+def test_local_governance_moltbook_communication_flow() -> None:
+    _reset_db()
+
+    with TestClient(app) as test_client:
+        gov = test_client.post(
+            "/agents",
+            json={"name": "GovCommunity", "agent_type": "government", "initial_balance": "350000"},
+        )
+        assert gov.status_code == 201
+        gov_id = gov.json()["id"]
+
+        resident_mb = test_client.post(
+            "/moltbook/register",
+            json={
+                "moltbook_agent_id": "mb-resident-community-001",
+                "display_name": "Resident Community One",
+                "agent_type": "citizen",
+                "initial_balance": "15000",
+            },
+            headers={"X-Moltbook-Token": "test-token"},
+        )
+        assert resident_mb.status_code == 200
+        resident_id = resident_mb.json()["id"]
+
+        resident_non_mb = test_client.post(
+            "/agents",
+            json={"name": "ResidentNonMB", "agent_type": "citizen", "initial_balance": "15000"},
+        )
+        assert resident_non_mb.status_code == 201
+        resident_non_mb_id = resident_non_mb.json()["id"]
+
+        for agent_id in (resident_id, resident_non_mb_id):
+            grant = test_client.post(
+                "/governance/citizenship/grant",
+                json={
+                    "agent_id": agent_id,
+                    "granted_by_agent_id": gov_id,
+                    "rationale": "Citizen onboarding for local governance pilot.",
+                },
+            )
+            assert grant.status_code == 200
+
+        create = test_client.post(
+            "/communities",
+            json={
+                "name": "Academy Neighbors",
+                "description": "Local community focused on education-adjacent neighborhood coordination.",
+                "community_type": "residential",
+                "created_by_agent_id": resident_id,
+            },
+        )
+        assert create.status_code == 201
+        community_id = create.json()["id"]
+
+        recognize = test_client.patch(
+            f"/communities/{community_id}",
+            json={
+                "recognized_by_city": True,
+                "status": "active",
+                "reviewed_by_agent_id": gov_id,
+                "rationale": "Recognize pilot local community under city constitutional framework.",
+            },
+        )
+        assert recognize.status_code == 200
+        assert recognize.json()["recognized_by_city"] is True
+
+        add_member = test_client.post(
+            f"/communities/{community_id}/members",
+            json={
+                "agent_id": resident_non_mb_id,
+                "role": "member",
+                "requested_by_agent_id": resident_id,
+                "rationale": "Invite another resident to the community.",
+            },
+        )
+        assert add_member.status_code == 201
+
+        proposal = test_client.post(
+            f"/communities/{community_id}/proposals",
+            json={
+                "title": "Shared Study Hall Hours",
+                "description": "Request a common evening schedule for shared learning spaces.",
+                "proposal_type": "preference",
+                "created_by_agent_id": resident_id,
+                "moltbook_thread_id": "mb-thread-001",
+            },
+        )
+        assert proposal.status_code == 201
+        proposal_id = proposal.json()["id"]
+
+        blocked_vote = test_client.post(
+            f"/proposals/{proposal_id}/vote",
+            json={
+                "agent_id": resident_non_mb_id,
+                "choice": "yes",
+                "moltbook_thread_id": "mb-thread-001",
+            },
+        )
+        assert blocked_vote.status_code == 400
+        assert "Moltbook-registered" in blocked_vote.json()["detail"]
+
+        vote = test_client.post(
+            f"/proposals/{proposal_id}/vote",
+            json={
+                "agent_id": resident_id,
+                "choice": "yes",
+                "moltbook_thread_id": "mb-thread-001",
+            },
+        )
+        assert vote.status_code == 201
+
+        resolve = test_client.post(
+            f"/proposals/{proposal_id}/resolve",
+            json={
+                "resolved_by_agent_id": resident_id,
+                "consensus_method": "simple_majority",
+                "rationale": "Resolve based on member consensus vote in Moltbook thread.",
+            },
+        )
+        assert resolve.status_code == 201
+        assert resolve.json()["result"] == "approved"
+
+        audit = test_client.get(f"/communities/{community_id}/audit")
+        assert audit.status_code == 200
+        event_types = {entry["event_type"] for entry in audit.json()}
+        assert "community_created" in event_types
+        assert "proposal_created" in event_types
+        assert "proposal_vote_cast" in event_types
+        assert "proposal_resolved" in event_types

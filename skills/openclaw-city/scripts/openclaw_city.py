@@ -200,6 +200,51 @@ def command_nemo_context(_: argparse.Namespace) -> None:
     print(json.dumps(result, indent=2))
 
 
+def command_create_community(args: argparse.Namespace) -> None:
+    payload = {
+        "name": args.name,
+        "description": args.description,
+        "community_type": args.community_type,
+        "created_by_agent_id": args.created_by_agent_id,
+    }
+    result = api_call("POST", "/communities", payload)
+    print(json.dumps(result, indent=2))
+
+
+def command_create_community_proposal(args: argparse.Namespace) -> None:
+    payload = {
+        "title": args.title,
+        "description": args.description,
+        "proposal_type": args.proposal_type,
+        "created_by_agent_id": args.created_by_agent_id,
+        "moltbook_thread_id": args.moltbook_thread_id,
+        "moltbook_message_id": args.moltbook_message_id,
+    }
+    result = api_call("POST", f"/communities/{args.community_id}/proposals", payload)
+    print(json.dumps(result, indent=2))
+
+
+def command_vote_proposal(args: argparse.Namespace) -> None:
+    payload = {
+        "agent_id": args.agent_id,
+        "choice": args.choice,
+        "moltbook_thread_id": args.moltbook_thread_id,
+        "moltbook_message_id": args.moltbook_message_id,
+    }
+    result = api_call("POST", f"/proposals/{args.proposal_id}/vote", payload)
+    print(json.dumps(result, indent=2))
+
+
+def command_resolve_proposal(args: argparse.Namespace) -> None:
+    payload = {
+        "resolved_by_agent_id": args.resolved_by_agent_id,
+        "consensus_method": args.consensus_method,
+        "rationale": args.rationale,
+    }
+    result = api_call("POST", f"/proposals/{args.proposal_id}/resolve", payload)
+    print(json.dumps(result, indent=2))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="OpenClaw City CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -320,6 +365,56 @@ def build_parser() -> argparse.ArgumentParser:
 
     nemo = sub.add_parser("nemo-context", help="Get NeMo integration context and tool metadata")
     nemo.set_defaults(func=command_nemo_context)
+
+    community = sub.add_parser("create-community", help="Create local governance community")
+    community.add_argument("--name", required=True)
+    community.add_argument("--description", required=True)
+    community.add_argument(
+        "--community-type",
+        default="mixed",
+        choices=["residential", "institutional", "commercial", "research", "cultural", "mixed"],
+    )
+    community.add_argument("--created-by-agent-id", required=True)
+    community.set_defaults(func=command_create_community)
+
+    proposal = sub.add_parser("community-proposal", help="Create community proposal (Moltbook-threaded)")
+    proposal.add_argument("--community-id", required=True, type=int)
+    proposal.add_argument("--title", required=True)
+    proposal.add_argument("--description", required=True)
+    proposal.add_argument(
+        "--proposal-type",
+        required=True,
+        choices=[
+            "preference",
+            "local_rule_request",
+            "resource_request",
+            "leadership_selection",
+            "petition_to_city",
+        ],
+    )
+    proposal.add_argument("--created-by-agent-id", required=True)
+    proposal.add_argument("--moltbook-thread-id", required=True)
+    proposal.add_argument("--moltbook-message-id", default="")
+    proposal.set_defaults(func=command_create_community_proposal)
+
+    vote = sub.add_parser("proposal-vote", help="Vote on community proposal (Moltbook-threaded)")
+    vote.add_argument("--proposal-id", required=True, type=int)
+    vote.add_argument("--agent-id", required=True)
+    vote.add_argument("--choice", required=True, choices=["yes", "no", "abstain"])
+    vote.add_argument("--moltbook-thread-id", required=True)
+    vote.add_argument("--moltbook-message-id", default="")
+    vote.set_defaults(func=command_vote_proposal)
+
+    resolve = sub.add_parser("proposal-resolve", help="Resolve community proposal consensus")
+    resolve.add_argument("--proposal-id", required=True, type=int)
+    resolve.add_argument("--resolved-by-agent-id", required=True)
+    resolve.add_argument(
+        "--consensus-method",
+        default="simple_majority",
+        choices=["simple_majority", "supermajority", "weighted_trust", "coordinator_decision", "city_moderated"],
+    )
+    resolve.add_argument("--rationale", required=True)
+    resolve.set_defaults(func=command_resolve_proposal)
 
     return parser
 

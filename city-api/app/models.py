@@ -99,6 +99,92 @@ class AuditActionType(str, Enum):
     parcel_usage_set = "parcel_usage_set"
 
 
+class CommunityType(str, Enum):
+    residential = "residential"
+    institutional = "institutional"
+    commercial = "commercial"
+    research = "research"
+    cultural = "cultural"
+    mixed = "mixed"
+
+
+class CommunityStatus(str, Enum):
+    forming = "forming"
+    active = "active"
+    suspended = "suspended"
+    dissolved = "dissolved"
+
+
+class CommunityMembershipRole(str, Enum):
+    member = "member"
+    founder = "founder"
+    coordinator = "coordinator"
+    representative = "representative"
+    observer = "observer"
+
+
+class CommunityMembershipStatus(str, Enum):
+    active = "active"
+    suspended = "suspended"
+    left = "left"
+
+
+class CommunityProposalType(str, Enum):
+    preference = "preference"
+    local_rule_request = "local_rule_request"
+    resource_request = "resource_request"
+    leadership_selection = "leadership_selection"
+    petition_to_city = "petition_to_city"
+
+
+class CommunityProposalStatus(str, Enum):
+    open = "open"
+    under_review = "under_review"
+    approved_by_community = "approved_by_community"
+    rejected_by_community = "rejected_by_community"
+    submitted_to_city = "submitted_to_city"
+    accepted_by_city = "accepted_by_city"
+    rejected_by_city = "rejected_by_city"
+
+
+class CommunityVoteChoice(str, Enum):
+    yes = "yes"
+    no = "no"
+    abstain = "abstain"
+
+
+class CommunityConsensusMethod(str, Enum):
+    simple_majority = "simple_majority"
+    supermajority = "supermajority"
+    weighted_trust = "weighted_trust"
+    coordinator_decision = "coordinator_decision"
+    city_moderated = "city_moderated"
+
+
+class CommunityConsensusResult(str, Enum):
+    approved = "approved"
+    rejected = "rejected"
+    inconclusive = "inconclusive"
+
+
+class CommunityLeadershipRole(str, Enum):
+    coordinator = "coordinator"
+    community_rep = "community_rep"
+    local_steward = "local_steward"
+
+
+class CommunityLeadershipSelection(str, Enum):
+    consensus = "consensus"
+    appointment = "appointment"
+    city_recognition = "city_recognition"
+
+
+class CommunityLeadershipStatus(str, Enum):
+    active = "active"
+    ended = "ended"
+    revoked = "revoked"
+
+
 class Agent(Base):
     __tablename__ = "agents"
 
@@ -120,6 +206,7 @@ class Agent(Base):
     trust_profile: Mapped[AgentTrust | None] = relationship(back_populates="agent", uselist=False)
     parcels: Mapped[list[Parcel]] = relationship(back_populates="owner")
     employments: Mapped[list[Employment]] = relationship(back_populates="agent")
+    community_memberships: Mapped[list[CommunityMembership]] = relationship(back_populates="agent")
     awarded_contracts: Mapped[list[GovernmentContract]] = relationship(
         back_populates="winning_agent",
         foreign_keys=lambda: [GovernmentContract.winning_agent_id],
@@ -373,3 +460,148 @@ class GovernanceAudit(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
+
+
+class AgentCommunity(Base):
+    __tablename__ = "agent_communities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(140), nullable=False, unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    community_type: Mapped[CommunityType] = mapped_column(SqlEnum(CommunityType), nullable=False)
+    created_by_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    recognized_by_city: Mapped[bool] = mapped_column(nullable=False, default=False)
+    status: Mapped[CommunityStatus] = mapped_column(SqlEnum(CommunityStatus), nullable=False, default=CommunityStatus.forming)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    memberships: Mapped[list[CommunityMembership]] = relationship(back_populates="community")
+    proposals: Mapped[list[CommunityProposal]] = relationship(back_populates="community")
+    leadership_terms: Mapped[list[CommunityLeadershipTerm]] = relationship(back_populates="community")
+    audit_records: Mapped[list[CommunityAuditRecord]] = relationship(back_populates="community")
+
+
+class CommunityMembership(Base):
+    __tablename__ = "community_memberships"
+    __table_args__ = (UniqueConstraint("community_id", "agent_id", name="uq_community_agent_membership"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("agent_communities.id"), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    role: Mapped[CommunityMembershipRole] = mapped_column(
+        SqlEnum(CommunityMembershipRole), nullable=False, default=CommunityMembershipRole.member
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    status: Mapped[CommunityMembershipStatus] = mapped_column(
+        SqlEnum(CommunityMembershipStatus), nullable=False, default=CommunityMembershipStatus.active
+    )
+
+    community: Mapped[AgentCommunity] = relationship(back_populates="memberships")
+    agent: Mapped[Agent] = relationship(back_populates="community_memberships")
+
+
+class CommunityProposal(Base):
+    __tablename__ = "community_proposals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("agent_communities.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    proposal_type: Mapped[CommunityProposalType] = mapped_column(SqlEnum(CommunityProposalType), nullable=False)
+    created_by_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    status: Mapped[CommunityProposalStatus] = mapped_column(
+        SqlEnum(CommunityProposalStatus), nullable=False, default=CommunityProposalStatus.open
+    )
+    moltbook_thread_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    moltbook_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    community: Mapped[AgentCommunity] = relationship(back_populates="proposals")
+    votes: Mapped[list[CommunityVote]] = relationship(back_populates="proposal")
+    consensus_records: Mapped[list[CommunityConsensusRecord]] = relationship(back_populates="proposal")
+
+
+class CommunityVote(Base):
+    __tablename__ = "community_votes"
+    __table_args__ = (UniqueConstraint("proposal_id", "agent_id", name="uq_proposal_agent_vote"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("community_proposals.id"), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    choice: Mapped[CommunityVoteChoice] = mapped_column(SqlEnum(CommunityVoteChoice), nullable=False)
+    trust_weight_snapshot: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=Decimal("0.00"))
+    moltbook_thread_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    moltbook_message_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    proposal: Mapped[CommunityProposal] = relationship(back_populates="votes")
+
+
+class CommunityConsensusRecord(Base):
+    __tablename__ = "community_consensus_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("community_proposals.id"), nullable=False, index=True)
+    consensus_method: Mapped[CommunityConsensusMethod] = mapped_column(SqlEnum(CommunityConsensusMethod), nullable=False)
+    result: Mapped[CommunityConsensusResult] = mapped_column(SqlEnum(CommunityConsensusResult), nullable=False)
+    yes_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    no_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    abstain_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    weighted_score: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=Decimal("0.00"))
+    resolved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    proposal: Mapped[CommunityProposal] = relationship(back_populates="consensus_records")
+
+
+class CommunityLeadershipTerm(Base):
+    __tablename__ = "community_leadership_terms"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("agent_communities.id"), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    leadership_role: Mapped[CommunityLeadershipRole] = mapped_column(SqlEnum(CommunityLeadershipRole), nullable=False)
+    selected_by: Mapped[CommunityLeadershipSelection] = mapped_column(
+        SqlEnum(CommunityLeadershipSelection), nullable=False
+    )
+    term_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    term_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[CommunityLeadershipStatus] = mapped_column(
+        SqlEnum(CommunityLeadershipStatus), nullable=False, default=CommunityLeadershipStatus.active
+    )
+    selected_via_proposal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("community_proposals.id"), nullable=True, index=True
+    )
+
+    community: Mapped[AgentCommunity] = relationship(back_populates="leadership_terms")
+
+
+class CommunityAuditRecord(Base):
+    __tablename__ = "community_audit_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("agent_communities.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    event_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    triggered_by_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    community: Mapped[AgentCommunity] = relationship(back_populates="audit_records")
