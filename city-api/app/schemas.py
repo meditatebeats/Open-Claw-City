@@ -5,10 +5,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .models import (
     AgentType,
+    AuditActionType,
     CitizenshipStatus,
     ContractStatus,
+    EmploymentStatus,
+    InstitutionType,
+    JobStatus,
     ListingStatus,
+    ParcelUsageState,
+    SimulationFrequency,
     TreasuryEntryType,
+    TrustTier,
 )
 
 
@@ -29,6 +36,8 @@ class AgentRead(BaseModel):
     moltbook_agent_id: str | None
     citizenship_status: CitizenshipStatus
     wallet_balance: Decimal
+    trust_tier: TrustTier
+    reputation_score: Decimal
     created_at: datetime
     passport_number: str | None = None
 
@@ -46,6 +55,7 @@ class ParcelCreate(BaseModel):
     zoning: str = Field(default="mixed", min_length=1, max_length=64)
     area_sq_m: int = Field(ge=10, le=2_000_000)
     base_price: Decimal = Field(ge=Decimal("1"))
+    usage_state: ParcelUsageState = ParcelUsageState.unassigned
 
 
 class ParcelRead(BaseModel):
@@ -58,6 +68,13 @@ class ParcelRead(BaseModel):
     area_sq_m: int
     base_price: Decimal
     owner_agent_id: str | None
+    usage_state: ParcelUsageState
+
+
+class ParcelUsageUpdateRequest(BaseModel):
+    usage_state: ParcelUsageState
+    assigned_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
 
 
 class ListingCreate(BaseModel):
@@ -86,6 +103,7 @@ class PurchaseRequest(BaseModel):
 class CitizenshipGrantRequest(BaseModel):
     agent_id: str
     granted_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
 
 
 class ContractCreate(BaseModel):
@@ -101,11 +119,13 @@ class ContractCreate(BaseModel):
         min_length=20,
         description="Measurable human benefit target.",
     )
+    action_rationale: str = Field(min_length=8, max_length=1200)
 
 
 class ContractAwardRequest(BaseModel):
     winning_agent_id: str
     awarded_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
 
 
 class TransactionRead(BaseModel):
@@ -126,7 +146,13 @@ class CityStats(BaseModel):
     registered_agents: int
     active_listings: int
     total_parcels: int
+    occupied_parcels: int
+    institution_count: int
+    employed_agents: int
+    trusted_contributors: int
     settled_volume: Decimal
+    payroll_volume: Decimal
+    treasury_balance: Decimal
 
 
 class CityManifest(BaseModel):
@@ -158,6 +184,7 @@ class TaxPolicyCreate(BaseModel):
     citizen_rate_percent: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
     transfer_rate_percent: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
     created_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
 
 
 class TaxPolicyRead(BaseModel):
@@ -176,6 +203,7 @@ class CollectCitizenTaxRequest(BaseModel):
     collected_by_agent_id: str
     agent_ids: list[str] = Field(default_factory=list)
     note: str | None = Field(default=None, max_length=300)
+    rationale: str = Field(min_length=8, max_length=1200)
 
 
 class TreasuryDisbursementRequest(BaseModel):
@@ -183,6 +211,9 @@ class TreasuryDisbursementRequest(BaseModel):
     target_agent_id: str
     amount: Decimal = Field(gt=Decimal("0"))
     note: str | None = Field(default=None, max_length=300)
+    rationale: str = Field(min_length=8, max_length=1200)
+    human_confirmed: bool = False
+    co_sign_agent_id: str | None = None
 
 
 class TreasuryEntryRead(BaseModel):
@@ -202,3 +233,118 @@ class TreasurySummary(BaseModel):
     total_collected: Decimal
     total_disbursed: Decimal
     entry_count: int
+
+
+class InstitutionCreate(BaseModel):
+    name: str = Field(min_length=3, max_length=140)
+    institution_type: InstitutionType
+    parcel_id: int | None = None
+    created_by_agent_id: str
+    budget: Decimal = Field(ge=Decimal("0"))
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class InstitutionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    institution_type: InstitutionType
+    parcel_id: int | None
+    created_by_agent_id: str
+    budget: Decimal
+    reputation_score: Decimal
+    output_units: int
+    created_at: datetime
+
+
+class JobCreate(BaseModel):
+    institution_id: int
+    title: str = Field(min_length=2, max_length=140)
+    role_type: str = Field(default="general", min_length=2, max_length=80)
+    parcel_id: int | None = None
+    salary: Decimal = Field(gt=Decimal("0"))
+
+
+class JobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    institution_id: int
+    title: str
+    role_type: str
+    parcel_id: int | None
+    salary: Decimal
+    status: JobStatus
+    created_at: datetime
+
+
+class EmploymentAssignRequest(BaseModel):
+    agent_id: str
+    job_id: int
+    assigned_by_agent_id: str
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class EmploymentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    institution_id: int
+    job_id: int
+    salary: Decimal
+    status: EmploymentStatus
+    performance_score: Decimal
+    started_at: datetime
+    ended_at: datetime | None
+
+
+class SimulationTickRequest(BaseModel):
+    processed_by_agent_id: str
+    frequency: SimulationFrequency = SimulationFrequency.daily
+    note: str | None = Field(default=None, max_length=300)
+    rationale: str = Field(min_length=8, max_length=1200)
+
+
+class SimulationCycleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    frequency: SimulationFrequency
+    processed_by_agent_id: str
+    payroll_total: Decimal
+    output_units: int
+    note: str | None
+    created_at: datetime
+
+
+class GovernanceAuditRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action_type: AuditActionType
+    actor_agent_id: str | None
+    target_agent_id: str | None
+    reference_type: str | None
+    reference_id: str | None
+    rationale: str
+    human_confirmed: bool
+    co_sign_agent_id: str | None
+    created_at: datetime
+
+
+class NemoToolSpec(BaseModel):
+    name: str
+    method: str
+    path: str
+    description: str
+    requires_rationale: bool
+
+
+class NemoContext(BaseModel):
+    city_name: str
+    api_version: str
+    guardrail_principle: str
+    stats: CityStats
+    tools: list[NemoToolSpec]

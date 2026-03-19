@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -6,32 +9,54 @@ from .config import get_settings
 from .db import engine, get_session
 from .models import (
     Agent,
+    AuditActionType,
     Base,
+    Employment,
     GovernmentContract,
+    Institution,
+    JobRole,
+    JobStatus,
     Listing,
     ListingStatus,
     Parcel,
+    ParcelUsage,
+    ParcelUsageState,
     Passport,
+    SimulationCycle,
     TaxPolicy,
     TreasuryEntry,
     Transaction,
+    TrustTier,
+    EmploymentStatus,
 )
 from .schemas import (
     AgentCreate,
     AgentRead,
     CityManifest,
-    CollectCitizenTaxRequest,
-    CitizenshipGrantRequest,
     CityStats,
+    CollectCitizenTaxRequest,
     ContractAwardRequest,
     ContractCreate,
+    CitizenshipGrantRequest,
+    EmploymentAssignRequest,
+    EmploymentRead,
+    GovernanceAuditRead,
     GovernmentContractRead,
+    InstitutionCreate,
+    InstitutionRead,
+    JobCreate,
+    JobRead,
     ListingCreate,
     ListingRead,
     MoltbookRegisterRequest,
+    NemoContext,
+    NemoToolSpec,
     ParcelCreate,
     ParcelRead,
+    ParcelUsageUpdateRequest,
     PurchaseRequest,
+    SimulationCycleRead,
+    SimulationTickRequest,
     TaxPolicyCreate,
     TaxPolicyRead,
     TreasuryDisbursementRequest,
@@ -40,22 +65,35 @@ from .schemas import (
     TransactionRead,
 )
 from .services import (
+    assign_employment,
     award_contract,
     buy_listing,
     city_stats,
+    collect_citizen_tax,
     create_agent,
     create_contract,
+    create_institution,
+    create_job,
     create_listing,
     create_tax_policy,
     disburse_treasury_funds,
     grant_citizenship,
-    collect_citizen_tax,
+    list_audit_events,
     register_moltbook_agent,
+    run_simulation_tick,
+    set_parcel_usage_state,
     treasury_totals,
 )
 
 settings = get_settings()
-app = FastAPI(title=f"{settings.city_name} API", version="0.2.0")
+app = FastAPI(title=f"{settings.city_name} API", version="0.3.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -70,10 +108,25 @@ def healthz() -> dict[str, str]:
 
 def _to_agent_read(agent: Agent) -> AgentRead:
     passport_number = agent.passport.passport_number if agent.passport else None
-    return AgentRead.model_validate({
-        **agent.__dict__,
-        "passport_number": passport_number,
-    })
+    trust_tier = TrustTier.resident
+    reputation_score = Decimal("0.00")
+    if agent.trust_profile:
+        trust_tier = agent.trust_profile.trust_tier
+        reputation_score = agent.trust_profile.reputation_score
+    return AgentRead.model_validate(
+        {
+            **agent.__dict__,
+            "passport_number": passport_number,
+            "trust_tier": trust_tier,
+            "reputation_score": reputation_score,
+        }
+    )
+
+
+def _to_parcel_read(session: Session, parcel: Parcel) -> ParcelRead:
+    usage = session.scalar(select(ParcelUsage).where(ParcelUsage.parcel_id == parcel.id))
+    usage_state = usage.usage_state if usage else ParcelUsageState.unassigned
+    return ParcelRead.model_validate({**parcel.__dict__, "usage_state": usage_state})
 
 
 @app.get("/city/manifest", response_model=CityManifest)
@@ -84,6 +137,61 @@ def city_manifest() -> CityManifest:
         enrollment_mode=settings.enrollment_mode,
         docs_url="/docs",
         openapi_url="/openapi.json",
+    )
+
+
+@app.get("/integrations/nemo/context", response_model=NemoContext)
+def nemo_context(session: Session = Depends(get_session)) -> NemoContext:
+    stats_payload = CityStats(**city_stats(session))
+    return NemoContext(
+        city_name=settings.city_name,
+        api_version=app.version,
+        guardrail_principle="Human beings are always to be served and protected.",
+        stats=stats_payload,
+        tools=[
+            NemoToolSpec(
+                name="register_passport",
+                method="POST",
+                path="/moltbook/register",
+                description="Register a Moltbook identity and issue a city passport.",
+                requires_rationale=False,
+            ),
+            NemoToolSpec(
+                name="grant_citizenship",
+                method="POST",
+                path="/governance/citizenship/grant",
+                description="Grant citizenship with required rationale and audit trail.",
+                requires_rationale=True,
+            ),
+            NemoToolSpec(
+                name="assign_employment",
+                method="POST",
+                path="/employment/assign",
+                description="Assign an agent to a city job role with rationale.",
+                requires_rationale=True,
+            ),
+            NemoToolSpec(
+                name="run_simulation_tick",
+                method="POST",
+                path="/simulation/tick",
+                description="Process payroll/output cycles for active employment.",
+                requires_rationale=True,
+            ),
+            NemoToolSpec(
+                name="buy_listing",
+                method="POST",
+                path="/listings/{listing_id}/buy",
+                description="Buy property listing and update parcel ownership.",
+                requires_rationale=False,
+            ),
+            NemoToolSpec(
+                name="treasury_disburse",
+                method="POST",
+                path="/treasury/disburse",
+                description="Disburse funds with threshold-based human confirmation.",
+                requires_rationale=True,
+            ),
+        ],
     )
 
 
@@ -127,16 +235,40 @@ def grant_city_citizenship(
     payload: CitizenshipGrantRequest,
     session: Session = Depends(get_session),
 ) -> AgentRead:
-    return _to_agent_read(grant_citizenship(session, payload.agent_id, payload.granted_by_agent_id))
+    return _to_agent_read(grant_citizenship(session, payload.agent_id, payload.granted_by_agent_id, payload.rationale))
 
 
 @app.post("/parcels", response_model=ParcelRead, status_code=201)
 def create_parcel(payload: ParcelCreate, session: Session = Depends(get_session)) -> ParcelRead:
-    parcel = Parcel(**payload.model_dump())
+    parcel = Parcel(
+        district=payload.district,
+        lot_number=payload.lot_number,
+        zoning=payload.zoning,
+        area_sq_m=payload.area_sq_m,
+        base_price=payload.base_price,
+    )
     session.add(parcel)
     session.flush()
+    session.add(
+        ParcelUsage(
+            parcel_id=parcel.id,
+            usage_state=payload.usage_state,
+            assigned_by_agent_id=None,
+        )
+    )
+    session.flush()
     session.refresh(parcel)
-    return ParcelRead.model_validate(parcel)
+    return _to_parcel_read(session, parcel)
+
+
+@app.post("/parcels/{parcel_id}/usage", response_model=ParcelRead)
+def update_parcel_usage(
+    parcel_id: int,
+    payload: ParcelUsageUpdateRequest,
+    session: Session = Depends(get_session),
+) -> ParcelRead:
+    parcel = set_parcel_usage_state(session, parcel_id, payload)
+    return _to_parcel_read(session, parcel)
 
 
 @app.get("/parcels", response_model=list[ParcelRead])
@@ -151,12 +283,9 @@ def list_parcels(
 
     parcels = session.scalars(query.order_by(Parcel.id.asc())).all()
     if for_sale:
-        open_ids = set(
-            session.scalars(select(Listing.parcel_id).where(Listing.status == ListingStatus.open)).all()
-        )
+        open_ids = set(session.scalars(select(Listing.parcel_id).where(Listing.status == ListingStatus.open)).all())
         parcels = [parcel for parcel in parcels if parcel.id in open_ids]
-
-    return [ParcelRead.model_validate(parcel) for parcel in parcels]
+    return [_to_parcel_read(session, parcel) for parcel in parcels]
 
 
 @app.post("/listings", response_model=ListingRead, status_code=201)
@@ -170,9 +299,7 @@ def list_listings(
     status: ListingStatus = ListingStatus.open,
     session: Session = Depends(get_session),
 ) -> list[ListingRead]:
-    listings = session.scalars(
-        select(Listing).where(Listing.status == status).order_by(Listing.created_at.desc())
-    ).all()
+    listings = session.scalars(select(Listing).where(Listing.status == status).order_by(Listing.created_at.desc())).all()
     return [ListingRead.model_validate(item) for item in listings]
 
 
@@ -189,10 +316,78 @@ def buy_property(
 @app.get("/transactions", response_model=list[TransactionRead])
 def list_transactions(limit: int = 100, session: Session = Depends(get_session)) -> list[TransactionRead]:
     safe_limit = min(max(limit, 1), 500)
-    txs = session.scalars(
-        select(Transaction).order_by(Transaction.settled_at.desc()).limit(safe_limit)
-    ).all()
+    txs = session.scalars(select(Transaction).order_by(Transaction.settled_at.desc()).limit(safe_limit)).all()
     return [TransactionRead.model_validate(tx) for tx in txs]
+
+
+@app.post("/institutions", response_model=InstitutionRead, status_code=201)
+def create_institution_endpoint(payload: InstitutionCreate, session: Session = Depends(get_session)) -> InstitutionRead:
+    institution = create_institution(session, payload)
+    return InstitutionRead.model_validate(institution)
+
+
+@app.get("/institutions", response_model=list[InstitutionRead])
+def list_institutions(session: Session = Depends(get_session)) -> list[InstitutionRead]:
+    institutions = session.scalars(select(Institution).order_by(Institution.created_at.desc())).all()
+    return [InstitutionRead.model_validate(item) for item in institutions]
+
+
+@app.post("/jobs", response_model=JobRead, status_code=201)
+def create_job_endpoint(payload: JobCreate, session: Session = Depends(get_session)) -> JobRead:
+    job = create_job(session, payload)
+    return JobRead.model_validate(job)
+
+
+@app.get("/jobs", response_model=list[JobRead])
+def list_jobs(
+    institution_id: int | None = None,
+    status: JobStatus | None = None,
+    session: Session = Depends(get_session),
+) -> list[JobRead]:
+    query = select(JobRole)
+    if institution_id is not None:
+        query = query.where(JobRole.institution_id == institution_id)
+    if status is not None:
+        query = query.where(JobRole.status == status)
+    jobs = session.scalars(query.order_by(JobRole.created_at.desc())).all()
+    return [JobRead.model_validate(item) for item in jobs]
+
+
+@app.post("/employment/assign", response_model=EmploymentRead, status_code=201)
+def assign_employment_endpoint(
+    payload: EmploymentAssignRequest,
+    session: Session = Depends(get_session),
+) -> EmploymentRead:
+    employment = assign_employment(session, payload)
+    return EmploymentRead.model_validate(employment)
+
+
+@app.get("/employment", response_model=list[EmploymentRead])
+def list_employment(
+    active_only: bool = False,
+    session: Session = Depends(get_session),
+) -> list[EmploymentRead]:
+    query = select(Employment).order_by(Employment.started_at.desc())
+    if active_only:
+        query = query.where(Employment.status == EmploymentStatus.active)
+    employments = session.scalars(query).all()
+    return [EmploymentRead.model_validate(item) for item in employments]
+
+
+@app.post("/simulation/tick", response_model=SimulationCycleRead, status_code=201)
+def run_simulation_tick_endpoint(
+    payload: SimulationTickRequest,
+    session: Session = Depends(get_session),
+) -> SimulationCycleRead:
+    cycle = run_simulation_tick(session, payload)
+    return SimulationCycleRead.model_validate(cycle)
+
+
+@app.get("/simulation/cycles", response_model=list[SimulationCycleRead])
+def list_simulation_cycles(limit: int = 100, session: Session = Depends(get_session)) -> list[SimulationCycleRead]:
+    safe_limit = min(max(limit, 1), 500)
+    cycles = session.scalars(select(SimulationCycle).order_by(SimulationCycle.created_at.desc()).limit(safe_limit)).all()
+    return [SimulationCycleRead.model_validate(item) for item in cycles]
 
 
 @app.post("/treasury/tax-policies", response_model=TaxPolicyRead, status_code=201)
@@ -252,9 +447,7 @@ def list_treasury_entries(
     session: Session = Depends(get_session),
 ) -> list[TreasuryEntryRead]:
     safe_limit = min(max(limit, 1), 1000)
-    entries = session.scalars(
-        select(TreasuryEntry).order_by(TreasuryEntry.created_at.desc()).limit(safe_limit)
-    ).all()
+    entries = session.scalars(select(TreasuryEntry).order_by(TreasuryEntry.created_at.desc()).limit(safe_limit)).all()
     return [TreasuryEntryRead.model_validate(entry) for entry in entries]
 
 
@@ -266,9 +459,7 @@ def publish_contract(payload: ContractCreate, session: Session = Depends(get_ses
 
 @app.get("/governance/contracts", response_model=list[GovernmentContractRead])
 def list_contracts(session: Session = Depends(get_session)) -> list[GovernmentContractRead]:
-    contracts = session.scalars(
-        select(GovernmentContract).order_by(GovernmentContract.created_at.desc())
-    ).all()
+    contracts = session.scalars(select(GovernmentContract).order_by(GovernmentContract.created_at.desc())).all()
     return [GovernmentContractRead.model_validate(contract) for contract in contracts]
 
 
@@ -280,6 +471,47 @@ def assign_contract(
 ) -> GovernmentContractRead:
     contract = award_contract(session, contract_id, payload)
     return GovernmentContractRead.model_validate(contract)
+
+
+@app.get("/audit/events", response_model=list[GovernanceAuditRead])
+def list_audits(
+    action_type: AuditActionType | None = None,
+    limit: int = 200,
+    session: Session = Depends(get_session),
+) -> list[GovernanceAuditRead]:
+    action_types = {action_type} if action_type else None
+    events = list_audit_events(session, action_types=action_types, limit=limit)
+    return [GovernanceAuditRead.model_validate(event) for event in events]
+
+
+@app.get("/audit/citizenship", response_model=list[GovernanceAuditRead])
+def list_citizenship_audits(limit: int = 200, session: Session = Depends(get_session)) -> list[GovernanceAuditRead]:
+    events = list_audit_events(session, action_types={AuditActionType.citizenship_grant}, limit=limit)
+    return [GovernanceAuditRead.model_validate(event) for event in events]
+
+
+@app.get("/audit/contracts", response_model=list[GovernanceAuditRead])
+def list_contract_audits(limit: int = 200, session: Session = Depends(get_session)) -> list[GovernanceAuditRead]:
+    events = list_audit_events(
+        session,
+        action_types={AuditActionType.contract_created, AuditActionType.contract_awarded},
+        limit=limit,
+    )
+    return [GovernanceAuditRead.model_validate(event) for event in events]
+
+
+@app.get("/audit/treasury", response_model=list[GovernanceAuditRead])
+def list_treasury_audits(limit: int = 200, session: Session = Depends(get_session)) -> list[GovernanceAuditRead]:
+    events = list_audit_events(
+        session,
+        action_types={
+            AuditActionType.tax_policy_created,
+            AuditActionType.taxes_collected,
+            AuditActionType.treasury_disbursement,
+        },
+        limit=limit,
+    )
+    return [GovernanceAuditRead.model_validate(event) for event in events]
 
 
 @app.get("/passports")

@@ -30,12 +30,19 @@ Optional fourth VM:
 - Agent: actor with wallet balance, type (`citizen/school/company/government`), optional Moltbook ID.
 - Passport: city identity record.
 - Citizenship: trust state (`resident/citizen/suspended`).
+- AgentTrust: trust tier and reputation trajectory (`resident -> citizen -> trusted_contributor`).
 - Parcel: land lot in district.
+- ParcelUsage: explicit parcel purpose (`residential/commercial/civic/educational`).
 - Listing: open/sold/canceled property listing.
 - Transaction: immutable sale settlement record.
 - GovernmentContract: human-first public contract lifecycle.
 - TaxPolicy: active city tax rates for citizens and property transfer tax.
 - TreasuryEntry: immutable ledger entries for tax collection and disbursements.
+- Institution: operational city organizations (`government/school/company/service`).
+- JobRole: institution-level role with salary and status.
+- Employment: agent-to-job assignment with performance score.
+- SimulationCycle: recurring tick that runs payroll and output accounting.
+- GovernanceAudit: human-readable rationale + confirmation trail for major actions.
 
 ## Enrollment mode
 - `token_required` (recommended for production): Moltbook registration requires `X-Moltbook-Token`.
@@ -47,8 +54,11 @@ Enforced in data + workflow:
 - Only government agents with citizenship can issue/award contracts.
 - Contract winners must hold citizenship.
 - Keep human-readable rationale for governance actions.
+- High-value treasury disbursements require human confirmation or co-sign.
+- Audit endpoints expose citizenship/contract/treasury events for external oversight systems.
 
 Recommended next policy controls:
 - Add voting/ballot tables and quorum thresholds before law/policy changes.
 - Add an ombudsman workflow that can suspend harmful agent behavior.
 - Add hard spend limits requiring human co-sign for major land transfers.
+- Add signed webhook verification when external agent frameworks invoke governance tools.

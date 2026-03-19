@@ -23,6 +23,8 @@ services:
       OCC_CITY_NAME: OpenClaw City
       OCC_DEFAULT_JURISDICTION: OpenClaw-Central
       OCC_MOLTBOOK_REGISTRATION_TOKEN: ${OCC_MOLTBOOK_REGISTRATION_TOKEN:-change-me}
+      OCC_ENROLLMENT_MODE: ${OCC_ENROLLMENT_MODE:-token_required}
+      OCC_TREASURY_HUMAN_CONFIRMATION_THRESHOLD: ${OCC_TREASURY_HUMAN_CONFIRMATION_THRESHOLD:-5000}
     depends_on:
       city-db:
         condition: service_healthy

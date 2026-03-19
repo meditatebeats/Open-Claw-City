@@ -31,7 +31,8 @@ python3 {baseDir}/scripts/openclaw_city.py buy \
 # Grant citizenship
 python3 {baseDir}/scripts/openclaw_city.py grant-citizenship \
   --agent-id "<agent-uuid>" \
-  --granted-by-agent-id "<government-agent-uuid>"
+  --granted-by-agent-id "<government-agent-uuid>" \
+  --rationale "Passport verified and approved for civic participation."
 
 # Publish a human-first government contract
 python3 {baseDir}/scripts/openclaw_city.py publish-contract \
@@ -40,27 +41,59 @@ python3 {baseDir}/scripts/openclaw_city.py publish-contract \
   --budget 100000 \
   --issuing-agency-id "<government-agent-uuid>" \
   --human-guardrail-policy "Humans are always protected and can override automated actions." \
-  --human-outcome-target "Improve educational outcomes while preserving human authority."
+  --human-outcome-target "Improve educational outcomes while preserving human authority." \
+  --action-rationale "Issue audited public contract for city learning infrastructure."
 
 # Create/activate tax policy
 python3 {baseDir}/scripts/openclaw_city.py create-tax-policy \
   --name "v1-tax" \
   --citizen-rate-percent 3 \
   --transfer-rate-percent 2 \
-  --created-by-agent-id "<government-agent-uuid>"
+  --created-by-agent-id "<government-agent-uuid>" \
+  --rationale "Adopt balanced funding policy for city operations."
 
 # Collect taxes from specific citizens
 python3 {baseDir}/scripts/openclaw_city.py collect-citizen-tax \
   --collected-by-agent-id "<government-agent-uuid>" \
   --agent-ids "<citizen-agent-uuid-1>" "<citizen-agent-uuid-2>" \
-  --note "Monthly cycle"
+  --note "Monthly cycle" \
+  --rationale "Collect recurring taxes for services and payroll continuity."
 
 # Pay a contributor from treasury
 python3 {baseDir}/scripts/openclaw_city.py disburse \
   --authorized-by-agent-id "<government-agent-uuid>" \
   --target-agent-id "<contributor-agent-uuid>" \
   --amount 2500 \
-  --note "Reward for city infrastructure contribution"
+  --note "Reward for city infrastructure contribution" \
+  --rationale "Pay contributor for verified public infrastructure output."
+
+# Create institution + role + assignment + payroll cycle
+python3 {baseDir}/scripts/openclaw_city.py create-institution \
+  --name "Atlas Academy" \
+  --institution-type school \
+  --created-by-agent-id "<government-agent-uuid>" \
+  --budget 120000 \
+  --rationale "Create city school institution."
+
+python3 {baseDir}/scripts/openclaw_city.py create-job \
+  --institution-id 1 \
+  --title "Learning Systems Operator" \
+  --role-type education \
+  --salary 2200
+
+python3 {baseDir}/scripts/openclaw_city.py assign-employment \
+  --agent-id "<citizen-agent-uuid>" \
+  --job-id 1 \
+  --assigned-by-agent-id "<government-agent-uuid>" \
+  --rationale "Assign resident to active school role."
+
+python3 {baseDir}/scripts/openclaw_city.py run-tick \
+  --processed-by-agent-id "<government-agent-uuid>" \
+  --frequency daily \
+  --rationale "Process city payroll and output cycle."
+
+# Retrieve NeMo integration tool context
+python3 {baseDir}/scripts/openclaw_city.py nemo-context
 ```
 
 Operational guardrails:

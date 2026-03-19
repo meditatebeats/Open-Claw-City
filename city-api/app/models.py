@@ -44,6 +44,59 @@ class TreasuryEntryType(str, Enum):
     citizen_tax = "citizen_tax"
     transfer_tax = "transfer_tax"
     disbursement = "disbursement"
+    payroll_grant = "payroll_grant"
+
+
+class InstitutionType(str, Enum):
+    government = "government"
+    school = "school"
+    company = "company"
+    service = "service"
+
+
+class JobStatus(str, Enum):
+    open = "open"
+    filled = "filled"
+    paused = "paused"
+    closed = "closed"
+
+
+class EmploymentStatus(str, Enum):
+    active = "active"
+    paused = "paused"
+    ended = "ended"
+
+
+class SimulationFrequency(str, Enum):
+    hourly = "hourly"
+    daily = "daily"
+
+
+class ParcelUsageState(str, Enum):
+    unassigned = "unassigned"
+    residential = "residential"
+    commercial = "commercial"
+    civic = "civic"
+    educational = "educational"
+
+
+class TrustTier(str, Enum):
+    resident = "resident"
+    citizen = "citizen"
+    trusted_contributor = "trusted_contributor"
+
+
+class AuditActionType(str, Enum):
+    citizenship_grant = "citizenship_grant"
+    contract_created = "contract_created"
+    contract_awarded = "contract_awarded"
+    tax_policy_created = "tax_policy_created"
+    taxes_collected = "taxes_collected"
+    treasury_disbursement = "treasury_disbursement"
+    institution_created = "institution_created"
+    employment_assigned = "employment_assigned"
+    simulation_tick = "simulation_tick"
+    parcel_usage_set = "parcel_usage_set"
 
 
 class Agent(Base):
@@ -64,7 +117,9 @@ class Agent(Base):
     )
 
     passport: Mapped[Passport | None] = relationship(back_populates="agent", uselist=False)
+    trust_profile: Mapped[AgentTrust | None] = relationship(back_populates="agent", uselist=False)
     parcels: Mapped[list[Parcel]] = relationship(back_populates="owner")
+    employments: Mapped[list[Employment]] = relationship(back_populates="agent")
     awarded_contracts: Mapped[list[GovernmentContract]] = relationship(
         back_populates="winning_agent",
         foreign_keys=lambda: [GovernmentContract.winning_agent_id],
@@ -103,7 +158,25 @@ class Parcel(Base):
     )
 
     owner: Mapped[Agent | None] = relationship(back_populates="parcels")
+    usage: Mapped[ParcelUsage | None] = relationship(back_populates="parcel", uselist=False)
     listings: Mapped[list[Listing]] = relationship(back_populates="parcel")
+    institutions: Mapped[list[Institution]] = relationship(back_populates="parcel")
+
+
+class ParcelUsage(Base):
+    __tablename__ = "parcel_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parcel_id: Mapped[int] = mapped_column(ForeignKey("parcels.id"), nullable=False, unique=True, index=True)
+    usage_state: Mapped[ParcelUsageState] = mapped_column(
+        SqlEnum(ParcelUsageState), nullable=False, default=ParcelUsageState.unassigned
+    )
+    assigned_by_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    parcel: Mapped[Parcel] = relationship(back_populates="usage")
 
 
 class Listing(Base):
@@ -191,6 +264,112 @@ class TreasuryEntry(Base):
     source_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     target_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class Institution(Base):
+    __tablename__ = "institutions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(140), nullable=False, unique=True, index=True)
+    institution_type: Mapped[InstitutionType] = mapped_column(SqlEnum(InstitutionType), nullable=False)
+    parcel_id: Mapped[int | None] = mapped_column(ForeignKey("parcels.id"), nullable=True, index=True)
+    created_by_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    budget: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
+    reputation_score: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False, default=Decimal("0.00"))
+    output_units: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    parcel: Mapped[Parcel | None] = relationship(back_populates="institutions")
+    jobs: Mapped[list[JobRole]] = relationship(back_populates="institution")
+    employments: Mapped[list[Employment]] = relationship(back_populates="institution")
+
+
+class JobRole(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    institution_id: Mapped[int] = mapped_column(ForeignKey("institutions.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(140), nullable=False)
+    role_type: Mapped[str] = mapped_column(String(80), nullable=False, default="general")
+    parcel_id: Mapped[int | None] = mapped_column(ForeignKey("parcels.id"), nullable=True, index=True)
+    salary: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    status: Mapped[JobStatus] = mapped_column(SqlEnum(JobStatus), nullable=False, default=JobStatus.open)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    institution: Mapped[Institution] = relationship(back_populates="jobs")
+    employments: Mapped[list[Employment]] = relationship(back_populates="job")
+
+
+class Employment(Base):
+    __tablename__ = "employments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    institution_id: Mapped[int] = mapped_column(ForeignKey("institutions.id"), nullable=False, index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), nullable=False, index=True)
+    salary: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    status: Mapped[EmploymentStatus] = mapped_column(SqlEnum(EmploymentStatus), nullable=False, default=EmploymentStatus.active)
+    performance_score: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False, default=Decimal("0.00"))
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    agent: Mapped[Agent] = relationship(back_populates="employments")
+    institution: Mapped[Institution] = relationship(back_populates="employments")
+    job: Mapped[JobRole] = relationship(back_populates="employments")
+
+
+class SimulationCycle(Base):
+    __tablename__ = "simulation_cycles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    frequency: Mapped[SimulationFrequency] = mapped_column(
+        SqlEnum(SimulationFrequency), nullable=False, default=SimulationFrequency.daily
+    )
+    processed_by_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    payroll_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
+    output_units: Mapped[int] = mapped_column(nullable=False, default=0)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class AgentTrust(Base):
+    __tablename__ = "agent_trust"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, unique=True, index=True)
+    trust_tier: Mapped[TrustTier] = mapped_column(SqlEnum(TrustTier), nullable=False, default=TrustTier.resident)
+    reputation_score: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False, default=Decimal("0.00"))
+    lifetime_output_units: Mapped[int] = mapped_column(nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    agent: Mapped[Agent] = relationship(back_populates="trust_profile")
+
+
+class GovernanceAudit(Base):
+    __tablename__ = "governance_audits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action_type: Mapped[AuditActionType] = mapped_column(SqlEnum(AuditActionType), nullable=False, index=True)
+    actor_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    target_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    reference_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    human_confirmed: Mapped[bool] = mapped_column(nullable=False, default=False)
+    co_sign_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
