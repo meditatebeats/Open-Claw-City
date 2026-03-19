@@ -40,6 +40,12 @@ class ContractStatus(str, Enum):
     canceled = "canceled"
 
 
+class TreasuryEntryType(str, Enum):
+    citizen_tax = "citizen_tax"
+    transfer_tax = "transfer_tax"
+    disbursement = "disbursement"
+
+
 class Agent(Base):
     __tablename__ = "agents"
 
@@ -159,4 +165,32 @@ class GovernmentContract(Base):
     winning_agent: Mapped[Agent | None] = relationship(
         back_populates="awarded_contracts",
         foreign_keys=[winning_agent_id],
+    )
+
+
+class TaxPolicy(Base):
+    __tablename__ = "tax_policies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(140), nullable=False)
+    citizen_rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("2.00"))
+    transfer_rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("1.50"))
+    active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    created_by_agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class TreasuryEntry(Base):
+    __tablename__ = "treasury_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_type: Mapped[TreasuryEntryType] = mapped_column(SqlEnum(TreasuryEntryType), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    source_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    target_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

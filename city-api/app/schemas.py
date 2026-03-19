@@ -3,7 +3,13 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import AgentType, CitizenshipStatus, ContractStatus, ListingStatus
+from .models import (
+    AgentType,
+    CitizenshipStatus,
+    ContractStatus,
+    ListingStatus,
+    TreasuryEntryType,
+)
 
 
 class AgentCreate(BaseModel):
@@ -137,3 +143,54 @@ class GovernmentContractRead(BaseModel):
     status: ContractStatus
     created_at: datetime
     awarded_at: datetime | None
+
+
+class TaxPolicyCreate(BaseModel):
+    name: str = Field(min_length=3, max_length=140)
+    citizen_rate_percent: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
+    transfer_rate_percent: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
+    created_by_agent_id: str
+
+
+class TaxPolicyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    citizen_rate_percent: Decimal
+    transfer_rate_percent: Decimal
+    active: bool
+    created_by_agent_id: str
+    created_at: datetime
+
+
+class CollectCitizenTaxRequest(BaseModel):
+    collected_by_agent_id: str
+    agent_ids: list[str] = Field(default_factory=list)
+    note: str | None = Field(default=None, max_length=300)
+
+
+class TreasuryDisbursementRequest(BaseModel):
+    authorized_by_agent_id: str
+    target_agent_id: str
+    amount: Decimal = Field(gt=Decimal("0"))
+    note: str | None = Field(default=None, max_length=300)
+
+
+class TreasuryEntryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    entry_type: TreasuryEntryType
+    amount: Decimal
+    source_agent_id: str | None
+    target_agent_id: str | None
+    note: str | None
+    created_at: datetime
+
+
+class TreasurySummary(BaseModel):
+    treasury_balance: Decimal
+    total_collected: Decimal
+    total_disbursed: Decimal
+    entry_count: int

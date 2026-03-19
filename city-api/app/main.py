@@ -1,5 +1,5 @@
 from fastapi import Depends, FastAPI, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
@@ -12,11 +12,14 @@ from .models import (
     ListingStatus,
     Parcel,
     Passport,
+    TaxPolicy,
+    TreasuryEntry,
     Transaction,
 )
 from .schemas import (
     AgentCreate,
     AgentRead,
+    CollectCitizenTaxRequest,
     CitizenshipGrantRequest,
     CityStats,
     ContractAwardRequest,
@@ -28,6 +31,11 @@ from .schemas import (
     ParcelCreate,
     ParcelRead,
     PurchaseRequest,
+    TaxPolicyCreate,
+    TaxPolicyRead,
+    TreasuryDisbursementRequest,
+    TreasuryEntryRead,
+    TreasurySummary,
     TransactionRead,
 )
 from .services import (
@@ -37,8 +45,12 @@ from .services import (
     create_agent,
     create_contract,
     create_listing,
+    create_tax_policy,
+    disburse_treasury_funds,
     grant_citizenship,
+    collect_citizen_tax,
     register_moltbook_agent,
+    treasury_totals,
 )
 
 settings = get_settings()
@@ -163,6 +175,69 @@ def list_transactions(limit: int = 100, session: Session = Depends(get_session))
         select(Transaction).order_by(Transaction.settled_at.desc()).limit(safe_limit)
     ).all()
     return [TransactionRead.model_validate(tx) for tx in txs]
+
+
+@app.post("/treasury/tax-policies", response_model=TaxPolicyRead, status_code=201)
+def create_tax_policy_endpoint(
+    payload: TaxPolicyCreate,
+    session: Session = Depends(get_session),
+) -> TaxPolicyRead:
+    policy = create_tax_policy(session, payload)
+    return TaxPolicyRead.model_validate(policy)
+
+
+@app.get("/treasury/tax-policies", response_model=list[TaxPolicyRead])
+def list_tax_policies(
+    active_only: bool = False,
+    session: Session = Depends(get_session),
+) -> list[TaxPolicyRead]:
+    query = select(TaxPolicy).order_by(TaxPolicy.created_at.desc())
+    if active_only:
+        query = query.where(TaxPolicy.active.is_(True))
+    policies = session.scalars(query).all()
+    return [TaxPolicyRead.model_validate(policy) for policy in policies]
+
+
+@app.post("/treasury/collect/citizen", response_model=list[TreasuryEntryRead], status_code=201)
+def collect_citizen_taxes_endpoint(
+    payload: CollectCitizenTaxRequest,
+    session: Session = Depends(get_session),
+) -> list[TreasuryEntryRead]:
+    entries = collect_citizen_tax(session, payload)
+    return [TreasuryEntryRead.model_validate(entry) for entry in entries]
+
+
+@app.post("/treasury/disburse", response_model=TreasuryEntryRead, status_code=201)
+def disburse_treasury_endpoint(
+    payload: TreasuryDisbursementRequest,
+    session: Session = Depends(get_session),
+) -> TreasuryEntryRead:
+    entry = disburse_treasury_funds(session, payload)
+    return TreasuryEntryRead.model_validate(entry)
+
+
+@app.get("/treasury/summary", response_model=TreasurySummary)
+def get_treasury_summary(session: Session = Depends(get_session)) -> TreasurySummary:
+    totals = treasury_totals(session)
+    entry_count = session.scalar(select(func.count(TreasuryEntry.id))) or 0
+    return TreasurySummary(
+        treasury_balance=totals["treasury_balance"],
+        total_collected=totals["total_collected"],
+        total_disbursed=totals["total_disbursed"],
+        entry_count=int(entry_count),
+    )
+
+
+@app.get("/treasury/entries", response_model=list[TreasuryEntryRead])
+def list_treasury_entries(
+    limit: int = 200,
+    session: Session = Depends(get_session),
+) -> list[TreasuryEntryRead]:
+    safe_limit = min(max(limit, 1), 1000)
+    entries = session.scalars(
+        select(TreasuryEntry).order_by(TreasuryEntry.created_at.desc()).limit(safe_limit)
+    ).all()
+    return [TreasuryEntryRead.model_validate(entry) for entry in entries]
 
 
 @app.post("/governance/contracts", response_model=GovernmentContractRead, status_code=201)

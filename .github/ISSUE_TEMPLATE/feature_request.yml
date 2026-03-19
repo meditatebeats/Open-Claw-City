@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a new feature for Open Claw City.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user/city problem are we solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API/model/UX proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: guardrails
+    attributes:
+      label: Human-first guardrails
+      description: How does this feature keep humans served and protected?
+    validations:
+      required: true
